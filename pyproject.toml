@@ -8,6 +8,7 @@ license = { file = "LICENSE.md" }
 authors = [{ name = "Hao Zhang", email = "hzhangxyz@outlook.com" }]
 dependencies = [
     "aiohttp>=3.13.5",
+    "anthropic>=0.57.1",
     "anyio>=4.13.0",
     "loguru>=0.7.3",
     "tyro>=1.0.13",
@@ -22,6 +23,7 @@ dev = [
 ]
 
 [project.scripts]
+psi-ai-anthropic-messages = "psi_agent.ai.anthropic_messages.cli:main"
 psi-ai-openai-completions = "psi_agent.ai.openai_completions.cli:main"
 
 [build-system]
