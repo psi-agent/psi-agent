@@ -1,1 +1,1 @@
-"""Tests for psi-channel module."""
+"""Tests for channel components."""
