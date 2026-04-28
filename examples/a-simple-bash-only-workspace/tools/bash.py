@@ -1,23 +1,28 @@
 """Async bash tool for executing shell commands."""
 
 import asyncio
+from pathlib import Path
 
 
-async def tool(command: str, timeout: int = 30) -> str:
+async def tool(command: str, timeout: int = 30, cwd: str | None = None) -> str:
     """Execute a bash command asynchronously.
 
     Args:
         command: The bash command to execute.
         timeout: Timeout in seconds. Defaults to 30.
+        cwd: Working directory for the command. Defaults to None.
 
     Returns:
         Command output as string, or error message if execution fails.
     """
     try:
+        working_dir = Path(cwd) if cwd else None
+
         process = await asyncio.create_subprocess_shell(
             command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            cwd=working_dir,
         )
 
         stdout, stderr = await asyncio.wait_for(
