@@ -2,7 +2,7 @@
 
 import pytest
 
-from psi_agent.channel.cli import send_message
+from psi_agent.channel.cli.cli import send_message
 
 
 @pytest.mark.asyncio
