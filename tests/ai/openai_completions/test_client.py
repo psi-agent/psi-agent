@@ -1,6 +1,7 @@
 """Tests for OpenAI completions client."""
 
 from collections.abc import AsyncGenerator
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -91,8 +92,9 @@ class TestOpenAICompletionsClient:
                 )
 
                 # Type narrowing: streaming returns AsyncGenerator
+                stream_gen = cast(AsyncGenerator[str], result)
                 chunks = []
-                async for chunk in result:
+                async for chunk in stream_gen:
                     chunks.append(chunk)
 
                 # Should have 2 chunks: the response and [DONE]
