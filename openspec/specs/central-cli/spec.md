@@ -11,8 +11,8 @@ The system SHALL provide a `psi-agent` command that serves as the unified entry 
 The system SHALL dynamically discover subcommands from the `psi_agent` package structure without hardcoding component names.
 
 #### Scenario: Discover ai subcommand
-- **WHEN** `psi_agent.ai` package exists with a `chat_completions` submodule
-- **THEN** `psi-agent ai chat-completions` command is available
+- **WHEN** `psi_agent.ai` package exists with a `openai_completions` submodule
+- **THEN** `psi-agent ai openai-completions` command is available
 
 #### Scenario: Discover channel subcommand
 - **WHEN** `psi_agent.channel` package exists with a `cli` submodule
@@ -25,9 +25,9 @@ The system SHALL dynamically discover subcommands from the `psi_agent` package s
 ### Requirement: Command equivalence
 The system SHALL ensure that `psi-agent <component> <subcommand>` produces identical behavior to the corresponding standalone CLI.
 
-#### Scenario: ai chat-completions equivalence
-- **WHEN** user runs `psi-agent ai chat-completions --help`
-- **THEN** output is identical to `psi-ai-chat-completions --help`
+#### Scenario: ai openai-completions equivalence
+- **WHEN** user runs `psi-agent ai openai-completions --help`
+- **THEN** output is identical to `psi-ai-openai-completions --help`
 
 #### Scenario: channel cli equivalence
 - **WHEN** user runs `psi-agent channel cli --help`
@@ -46,3 +46,14 @@ The system SHALL have brief documentation in README files mentioning the unified
 #### Scenario: README mentions unified CLI
 - **WHEN** user reads README.md or README_CN.md
 - **THEN** there is a sentence explaining `uvx psi-agent <subcommand>` usage
+
+### Requirement: Intermediate help support
+The system SHALL provide help text at all command levels using tyro's native subcommand mechanism.
+
+#### Scenario: Component-level help
+- **WHEN** user runs `psi-agent ai --help`
+- **THEN** system displays all available ai subcommands (openai-completions, anthropic-messages)
+
+#### Scenario: Subcommand-level help
+- **WHEN** user runs `psi-agent ai openai-completions --help`
+- **THEN** system displays the full help for openai-completions command

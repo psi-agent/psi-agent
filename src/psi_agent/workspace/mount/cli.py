@@ -1,30 +1,30 @@
 """CLI entry point for psi-workspace-mount."""
 
+from __future__ import annotations
+
 import asyncio
+from dataclasses import dataclass
 
 import tyro
 
 from psi_agent.workspace.mount.api import mount
 
 
-def run(
-    input_file: str,
-    output_dir: str,
-    layer: str | None = None,
-) -> None:
-    """Mount a squashfs image as overlayfs to a directory.
+@dataclass
+class Mount:
+    """Mount a squashfs image as overlayfs to a directory."""
 
-    Args:
-        input_file: Path to the squashfs file.
-        output_dir: Path for the mount point.
-        layer: Optional layer UUID or tag to mount.
-    """
-    asyncio.run(mount(input_file, output_dir, layer))
+    input_file: str
+    output_dir: str
+    layer: str | None = None
+
+    def __call__(self) -> None:
+        asyncio.run(mount(self.input_file, self.output_dir, self.layer))
 
 
 def main() -> None:
     """CLI entry point."""
-    tyro.cli(run)
+    tyro.cli(Mount)
 
 
 if __name__ == "__main__":
