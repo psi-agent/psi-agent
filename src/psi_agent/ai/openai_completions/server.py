@@ -50,6 +50,9 @@ class OpenAICompletionsServer:
             logger.error(f"Failed to parse request body: {e}")
             return web.Response(status=400, text="Invalid JSON body")
 
+        # Override model with configured model
+        body["model"] = self.config.model
+
         stream = body.get("stream", False)
         body_summary = {
             k: v if k != "messages" else f"[{len(v)} messages]" for k, v in body.items()
