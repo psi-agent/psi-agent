@@ -162,7 +162,10 @@ async def test_process_request_returns_response(config):
         mock_response.json = AsyncMock(
             return_value={
                 "choices": [
-                    {"message": {"role": "assistant", "content": "Response text"}, "finish_reason": "stop"}
+                    {
+                        "message": {"role": "assistant", "content": "Response text"},
+                        "finish_reason": "stop",
+                    }
                 ]
             }
         )

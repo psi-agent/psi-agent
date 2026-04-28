@@ -159,7 +159,9 @@ async def test_handle_chat_completions_no_user_message(config):
     server.runner = SessionRunner(config)
 
     mock_request = MagicMock()
-    mock_request.json = AsyncMock(return_value={"messages": [{"role": "assistant", "content": "Hi"}]})
+    mock_request.json = AsyncMock(
+        return_value={"messages": [{"role": "assistant", "content": "Hi"}]}
+    )
 
     response = await server._handle_chat_completions(mock_request)
     assert response.status == 400
