@@ -184,10 +184,102 @@ Task instructions here...
 **规范：**
 - 文件：`systems/system.py`
 - 必要函数：
-  - `build_system_prompt()` — 构造系统 prompt
-  - `compact_history()` — 对过长上下文进行压缩
+  - `async def build_system_prompt() -> str` — 构造系统 prompt，自动扫描 skills/ 目录
+  - `async def compact_history(history: list[dict[str, str]], max_tokens: int = 4000) -> list[dict[str, str]]` — 压缩过长对话历史
 
-**注意：具体接口待定，未来有新信息时需在此更新。**
+**build_system_prompt() 行为：**
+- 扫描 `workspace/skills/` 目录下的所有 SKILL.md 文件
+- 解析 YAML frontmatter 提取 description 字段
+- 将所有 skill description 组合成 system prompt 返回
+- 使用异步 IO 进行文件读取
+
+**compact_history() 行为：**
+- 接收对话历史和最大 token 限制
+- 当历史超过限制时，使用 LLM 摘要压缩旧消息
+- 返回压缩后的消息列表，保留近期上下文
+
+**示例：**
+
+```python
+# systems/system.py
+import re
+from pathlib import Path
+
+
+async def build_system_prompt() -> str:
+    """Build system prompt by scanning skills directory asynchronously.
+
+    Returns:
+        System prompt string containing skill descriptions and guidelines.
+    """
+    skills_dir = Path(__file__).parent.parent / "skills"
+    skill_descriptions: list[str] = []
+
+    if skills_dir.exists():
+        for skill_path in skills_dir.iterdir():
+            if skill_path.is_dir():
+                skill_md = skill_path / "SKILL.md"
+                if skill_md.exists():
+                    description = await _parse_skill_description(skill_md)
+                    if description:
+                        skill_descriptions.append(f"- {skill_path.name}: {description}")
+
+    system_prompt = """You are a helpful assistant with access to tools and skills.
+
+## Available Skills
+
+"""
+    if skill_descriptions:
+        system_prompt += "\n".join(skill_descriptions)
+    else:
+        system_prompt += "No skills configured."
+
+    system_prompt += """
+
+## Guidelines
+
+- Use tools when appropriate to accomplish tasks
+- When you need a skill's detailed instructions, read the SKILL.md file
+"""
+
+    return system_prompt
+
+
+async def _parse_skill_description(skill_md_path: Path) -> str | None:
+    """Parse SKILL.md to extract description from YAML frontmatter."""
+    content = skill_md_path.read_text()
+
+    frontmatter_match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
+    if not frontmatter_match:
+        return None
+
+    frontmatter = frontmatter_match.group(1)
+    description_match = re.search(r"^description:\s*(.+)$", frontmatter, re.MULTILINE)
+    if description_match:
+        return description_match.group(1).strip()
+
+    return None
+
+
+async def compact_history(
+    history: list[dict[str, str]], max_tokens: int = 4000
+) -> list[dict[str, str]]:
+    """Compact conversation history using LLM summarization.
+
+    Args:
+        history: List of conversation messages with role and content.
+        max_tokens: Maximum tokens to keep in history.
+
+    Returns:
+        Compacted history list.
+    """
+    # Framework implementation - replace with LLM summarization
+    max_messages = 20
+    if len(history) > max_messages:
+        return history[-max_messages:]
+
+    return history
+```
 
 ## 编码规范
 
