@@ -1,0 +1,402 @@
+"""Core session runner - message processing and tool call handling."""
+
+import importlib.util
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+import aiohttp
+from loguru import logger
+
+from psi_agent.session.config import SessionConfig
+from psi_agent.session.history import initialize_history, persist_history
+from psi_agent.session.tool_executor import execute_tools_parallel
+from psi_agent.session.tool_loader import detect_and_update_tools, load_all_tools
+from psi_agent.session.types import History, ToolRegistry
+
+
+async def load_system_prompt(workspace: Path) -> str | None:
+    """Load system prompt from workspace systems.
+
+    Args:
+        workspace: Path to workspace directory.
+
+    Returns:
+        System prompt string, or None if not available.
+    """
+    system_file = workspace / "systems" / "system.py"
+    if not system_file.exists():
+        logger.debug("No systems/system.py found, skipping system prompt")
+        return None
+
+    try:
+        # Dynamic import
+        spec = importlib.util.spec_from_file_location("system", system_file)
+        if spec is None or spec.loader is None:
+            logger.error(f"Failed to create spec for {system_file}")
+            return None
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["system"] = module
+        spec.loader.exec_module(module)
+
+        # Call build_system_prompt
+        if not hasattr(module, "build_system_prompt"):
+            logger.warning("No build_system_prompt function in system.py")
+            return None
+
+        system_prompt = await module.build_system_prompt()
+        logger.debug("Loaded system prompt from workspace")
+        return system_prompt
+
+    except Exception as e:
+        logger.error(f"Failed to load system prompt: {e}")
+        return None
+
+
+class SessionRunner:
+    """Core session runner handling message flow and tool calls."""
+
+    def __init__(self, config: SessionConfig) -> None:
+        """Initialize session runner.
+
+        Args:
+            config: Session configuration.
+        """
+        self.config = config
+        self.registry = ToolRegistry()
+        self.history: History | None = None
+        self.client: aiohttp.ClientSession | None = None
+
+    async def __aenter__(self) -> SessionRunner:
+        """Initialize session resources."""
+        # Initialize history
+        self.history = initialize_history(self.config.history_file)
+
+        # Load tools
+        tools_dir = self.config.tools_dir()
+        load_all_tools(tools_dir, self.registry)
+        logger.info(f"Loaded {len(self.registry.tools)} tools")
+
+        # Initialize HTTP client for psi-ai
+        connector = aiohttp.UnixConnector(path=str(self.config.ai_socket_path()))
+        self.client = aiohttp.ClientSession(connector=connector)
+        logger.debug(f"Initialized client for AI socket: {self.config.ai_socket}")
+
+        return self
+
+    async def __aexit__(self, _exc_type: Any, _exc_val: Any, _exc_tb: Any) -> None:
+        """Clean up session resources."""
+        if self.client is not None:
+            await self.client.close()
+            self.client = None
+            logger.debug("Closed AI client")
+
+    async def process_request(self, user_message: dict[str, Any]) -> dict[str, Any]:
+        """Process a user request and return response.
+
+        Args:
+            user_message: User message dict with role and content.
+
+        Returns:
+            Response dict in OpenAI format.
+        """
+        assert self.history is not None
+        assert self.client is not None
+
+        # Check for tool updates
+        detect_and_update_tools(self.config.tools_dir(), self.registry)
+
+        # Add user message to history
+        self.history.add_message(user_message)
+
+        # Build messages for LLM
+        messages = self._build_messages()
+
+        # Call psi-ai and handle tool calls
+        response = await self._run_conversation(messages)
+
+        # Persist history
+        persist_history(self.history)
+
+        return response
+
+    def _build_messages(self) -> list[dict[str, Any]]:
+        """Build messages list for LLM request.
+
+        Returns:
+            List of messages including system prompt and history.
+        """
+        assert self.history is not None
+
+        messages = []
+
+        # Add system prompt if available
+        system_prompt = self._get_cached_system_prompt()
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+
+        # Add history
+        messages.extend(self.history.messages)
+
+        return messages
+
+    _system_prompt_cache: str | None = None
+
+    def _get_cached_system_prompt(self) -> str | None:
+        """Get cached system prompt or load it.
+
+        Returns:
+            System prompt string or None.
+        """
+        if self._system_prompt_cache is None:
+            import asyncio
+
+            self._system_prompt_cache = asyncio.get_event_loop().run_until_complete(
+                load_system_prompt(self.config.workspace_path())
+            )
+        return self._system_prompt_cache
+
+    async def _run_conversation(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
+        """Run conversation with LLM, handling tool calls.
+
+        Args:
+            messages: Messages to send to LLM.
+
+        Returns:
+            Final response from LLM.
+        """
+        assert self.client is not None
+        assert self.history is not None
+
+        current_messages = list(messages)
+
+        while True:
+            # Build request
+            request_body = {
+                "model": "session",  # Model is determined by psi-ai
+                "messages": current_messages,
+                "tools": self.registry.list_tools(),
+            }
+
+            # Call psi-ai
+            async with self.client.post(
+                "http://localhost/v1/chat/completions",
+                json=request_body,
+            ) as response:
+                if response.status != 200:
+                    text = await response.text()
+                    logger.error(f"AI request failed: {response.status} - {text}")
+                    return self._make_error_response(f"AI request failed: {text}")
+
+                result = await response.json()
+
+            # Check for tool calls
+            choice = result.get("choices", [{}])[0]
+            message = choice.get("message", {})
+            tool_calls = message.get("tool_calls", [])
+
+            if not tool_calls:
+                # No tool calls - we're done
+                # Add assistant message to history
+                self.history.add_message(message)
+                return result
+
+            # Add assistant message with tool calls to history
+            self.history.add_message(message)
+
+            # Execute tools
+            tool_messages = await execute_tools_parallel(self.registry, tool_calls)
+
+            # Add tool results to history and current messages
+            for tool_msg in tool_messages:
+                self.history.add_message(tool_msg)
+                current_messages.append(message)
+                current_messages.append(tool_msg)
+
+            logger.debug(f"Executed {len(tool_calls)} tool calls, continuing conversation")
+
+    def _make_error_response(self, error: str) -> dict[str, Any]:
+        """Create an OpenAI-format error response.
+
+        Args:
+            error: Error message.
+
+        Returns:
+            Error response dict.
+        """
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": f"Error: {error}",
+                    },
+                    "finish_reason": "stop",
+                }
+            ]
+        }
+
+    async def process_streaming_request(self, user_message: dict[str, Any]) -> Any:
+        """Process a user request with streaming response.
+
+        Args:
+            user_message: User message dict with role and content.
+
+        Returns:
+            Async generator yielding SSE chunks.
+        """
+        assert self.history is not None
+        assert self.client is not None
+
+        # Check for tool updates
+        detect_and_update_tools(self.config.tools_dir(), self.registry)
+
+        # Add user message to history
+        self.history.add_message(user_message)
+
+        # Build messages for LLM
+        messages = self._build_messages()
+
+        # For streaming, we need to handle tool calls differently
+        # This implementation handles non-streaming for tool calls, then streams final response
+        return await self._run_streaming_conversation(messages)
+
+    async def _run_streaming_conversation(self, messages: list[dict[str, Any]]) -> Any:
+        """Run conversation with streaming, handling tool calls.
+
+        Args:
+            messages: Messages to send to LLM.
+
+        Returns:
+            Async generator or final response.
+        """
+
+        assert self.client is not None
+        assert self.history is not None
+
+        current_messages = list(messages)
+
+        while True:
+            # Build request
+            request_body = {
+                "model": "session",
+                "messages": current_messages,
+                "tools": self.registry.list_tools(),
+                "stream": True,
+            }
+
+            # Call psi-ai with streaming
+            async with self.client.post(
+                "http://localhost/v1/chat/completions",
+                json=request_body,
+            ) as response:
+                if response.status != 200:
+                    text = await response.text()
+                    logger.error(f"AI request failed: {response.status} - {text}")
+                    return self._make_error_response(f"AI request failed: {text}")
+
+                # Collect streaming response
+                content_chunks = []
+                tool_calls_data = []
+                async for line in response.content:
+                    line_str = line.decode().strip()
+                    if not line_str or line_str == "data: [DONE]":
+                        continue
+                    if line_str.startswith("data: "):
+                        try:
+                            chunk = json.loads(line_str[6:])
+                            delta = chunk.get("choices", [{}])[0].get("delta", {})
+
+                            if "content" in delta:
+                                content_chunks.append(delta["content"])
+
+                            if "tool_calls" in delta:
+                                tool_calls_data.extend(delta["tool_calls"])
+                        except json.JSONDecodeError:
+                            pass
+
+            # Check if we have tool calls
+            if tool_calls_data:
+                # Reconstruct tool calls from streaming data
+                tool_calls = self._reconstruct_tool_calls(tool_calls_data)
+
+                # Add assistant message to history
+                assistant_message = {
+                    "role": "assistant",
+                    "content": "".join(content_chunks) or None,
+                    "tool_calls": tool_calls,
+                }
+                self.history.add_message(assistant_message)
+
+                # Execute tools
+                tool_messages = await execute_tools_parallel(self.registry, tool_calls)
+
+                # Add tool results to history and current messages
+                for tool_msg in tool_messages:
+                    self.history.add_message(tool_msg)
+                    current_messages.append(assistant_message)
+                    current_messages.append(tool_msg)
+
+                logger.debug(f"Executed {len(tool_calls)} tool calls, continuing conversation")
+                continue
+
+            # No tool calls - return streaming response
+            final_content = "".join(content_chunks)
+            self.history.add_message({"role": "assistant", "content": final_content})
+            persist_history(self.history)
+
+            # Return as SSE generator
+            return self._make_streaming_response(content_chunks)
+
+    def _reconstruct_tool_calls(
+        self, tool_calls_data: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Reconstruct tool calls from streaming chunks.
+
+        Args:
+            tool_calls_data: List of tool call delta chunks.
+
+        Returns:
+            List of complete tool call dicts.
+        """
+        # Group by index and merge
+        tool_calls_map: dict[int, dict[str, Any]] = {}
+
+        for chunk in tool_calls_data:
+            index = chunk.get("index", 0)
+            if index not in tool_calls_map:
+                tool_calls_map[index] = {
+                    "id": "",
+                    "type": "function",
+                    "function": {"name": "", "arguments": ""},
+                }
+
+            if "id" in chunk:
+                tool_calls_map[index]["id"] = chunk["id"]
+            if "function" in chunk:
+                func = chunk["function"]
+                if "name" in func:
+                    tool_calls_map[index]["function"]["name"] += func["name"]
+                if "arguments" in func:
+                    tool_calls_map[index]["function"]["arguments"] += func["arguments"]
+
+        return list(tool_calls_map.values())
+
+    async def _make_streaming_response(self, content_chunks: list[str]):
+        """Create SSE streaming response.
+
+        Args:
+            content_chunks: List of content chunks.
+
+        Returns:
+            Async generator yielding SSE formatted strings.
+        """
+
+        for chunk in content_chunks:
+            data = json.dumps({"choices": [{"delta": {"content": chunk}, "finish_reason": None}]})
+            yield f"data: {data}\n\n"
+
+        # Send done marker
+        yield "data: [DONE]\n\n"
