@@ -45,7 +45,7 @@ mkdir -p workspace/{tools,skills,systems}
 2. 启动 session 和 AI provider：
 
 ```bash
-uv run psi-session \
+psi-agent session \
   --workspace ./workspace \
   --channel-socket ./channel.sock \
   --ai-socket ./ai.sock
@@ -54,7 +54,7 @@ uv run psi-session \
 3. 启动 AI 组件（例如 OpenAI 兼容接口）：
 
 ```bash
-uv run psi-ai-openai-completions \
+psi-agent ai openai-completions \
   --session-socket ./ai.sock \
   --model <模型名称> \
   --api-key <你的-api-key> \
@@ -64,8 +64,24 @@ uv run psi-ai-openai-completions \
 4. 启动 channel 与 agent 交互：
 
 ```bash
-uv run psi-channel-repl --session-socket ./channel.sock
+psi-agent channel repl --session-socket ./channel.sock
 ```
+
+## CLI 接口
+
+psi-agent 提供两种 CLI 接口：
+
+1. **子命令接口（推荐）**：`psi-agent <组件> <子命令>`
+   - 无需克隆仓库即可通过 `uvx` 使用
+   - 单一入口点，更易发现
+   - 示例：`psi-agent ai openai-completions`、`psi-agent channel repl`
+
+2. **独立命令**：`psi-<组件>-<子命令>`
+   - 输入更短
+   - 适合脚本中使用
+   - 示例：`psi-ai-openai-completions`、`psi-channel-repl`
+
+两种接口功能完全相同。推荐使用子命令接口。
 
 ## 组件
 
@@ -78,20 +94,35 @@ psi-agent 包含四种组件类型：
 | `psi-channel-*` | 消息通道（REPL、Telegram、飞书等） |
 | `psi-workspace-*` | Workspace 打包和挂载工具 |
 
-### 可用脚本
+### 可用命令
 
-安装后，以下 CLI 工具可用：
+安装后，以下命令可用：
 
-- `psi-ai-openai-completions` - OpenAI 兼容的 completion 服务器
-- `psi-ai-anthropic-messages` - Anthropic messages 服务器
-- `psi-session` - Agent session 运行时
-- `psi-channel-repl` - 交互式 REPL 界面
-- `psi-channel-cli` - CLI channel 接口
-- `psi-workspace-pack` - 将 workspace 打包为 squashfs
-- `psi-workspace-unpack` - 将 squashfs 解压为目录
-- `psi-workspace-mount` - 将 squashfs 挂载为 overlayfs
-- `psi-workspace-umount` - 卸载 workspace
-- `psi-workspace-snapshot` - 创建 workspace 快照
+**子命令格式（推荐）：**
+- `psi-agent ai openai-completions` - OpenAI 兼容的 completion 服务器
+- `psi-agent ai anthropic-messages` - Anthropic messages 服务器
+- `psi-agent session` - Agent session 运行时
+- `psi-agent channel repl` - 交互式 REPL 界面
+- `psi-agent channel cli` - CLI channel 接口
+- `psi-agent channel telegram` - Telegram bot channel
+- `psi-agent workspace pack` - 将 workspace 打包为 squashfs
+- `psi-agent workspace unpack` - 将 squashfs 解压为目录
+- `psi-agent workspace mount` - 将 squashfs 挂载为 overlayfs
+- `psi-agent workspace umount` - 卸载 workspace
+- `psi-agent workspace snapshot` - 创建 workspace 快照
+
+**独立命令格式（同样可用）：**
+- `psi-ai-openai-completions`
+- `psi-ai-anthropic-messages`
+- `psi-session`
+- `psi-channel-repl`
+- `psi-channel-cli`
+- `psi-channel-telegram`
+- `psi-workspace-pack`
+- `psi-workspace-unpack`
+- `psi-workspace-mount`
+- `psi-workspace-umount`
+- `psi-workspace-snapshot`
 
 ## 文档
 

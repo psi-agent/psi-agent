@@ -45,7 +45,7 @@ mkdir -p workspace/{tools,skills,systems}
 2. Start the session with an AI provider:
 
 ```bash
-uv run psi-session \
+psi-agent session \
   --workspace ./workspace \
   --channel-socket ./channel.sock \
   --ai-socket ./ai.sock
@@ -54,7 +54,7 @@ uv run psi-session \
 3. Start an AI component (e.g., OpenAI-compatible):
 
 ```bash
-uv run psi-ai-openai-completions \
+psi-agent ai openai-completions \
   --session-socket ./ai.sock \
   --model <model-name> \
   --api-key <your-api-key> \
@@ -64,8 +64,24 @@ uv run psi-ai-openai-completions \
 4. Start a channel to interact with your agent:
 
 ```bash
-uv run psi-channel-repl --session-socket ./channel.sock
+psi-agent channel repl --session-socket ./channel.sock
 ```
+
+## CLI Interfaces
+
+psi-agent provides two CLI interfaces:
+
+1. **Subcommand interface (preferred)**: `psi-agent <component> <subcommand>`
+   - Works with `uvx` without cloning the repository
+   - Single entry point, easier to discover
+   - Examples: `psi-agent ai openai-completions`, `psi-agent channel repl`
+
+2. **Standalone commands**: `psi-<component>-<subcommand>`
+   - Shorter to type
+   - Useful in scripts
+   - Examples: `psi-ai-openai-completions`, `psi-channel-repl`
+
+Both interfaces are functionally identical. The subcommand interface is recommended for general use.
 
 ## Components
 
@@ -78,20 +94,35 @@ psi-agent consists of four component types:
 | `psi-channel-*` | Message channels (REPL, Telegram, Feishu, etc.) |
 | `psi-workspace-*` | Workspace packaging and mounting tools |
 
-### Available Scripts
+### Available Commands
 
-After installation, these CLI tools are available:
+After installation, these commands are available:
 
-- `psi-ai-openai-completions` - OpenAI-compatible completion server
-- `psi-ai-anthropic-messages` - Anthropic messages server
-- `psi-session` - Agent session runtime
-- `psi-channel-repl` - Interactive REPL interface
-- `psi-channel-cli` - CLI channel interface
-- `psi-workspace-pack` - Package workspace to squashfs
-- `psi-workspace-unpack` - Extract squashfs to directory
-- `psi-workspace-mount` - Mount squashfs as overlayfs
-- `psi-workspace-umount` - Unmount workspace
-- `psi-workspace-snapshot` - Create workspace snapshot
+**Subcommand format (preferred):**
+- `psi-agent ai openai-completions` - OpenAI-compatible completion server
+- `psi-agent ai anthropic-messages` - Anthropic messages server
+- `psi-agent session` - Agent session runtime
+- `psi-agent channel repl` - Interactive REPL interface
+- `psi-agent channel cli` - CLI channel interface
+- `psi-agent channel telegram` - Telegram bot channel
+- `psi-agent workspace pack` - Package workspace to squashfs
+- `psi-agent workspace unpack` - Extract squashfs to directory
+- `psi-agent workspace mount` - Mount squashfs as overlayfs
+- `psi-agent workspace umount` - Unmount workspace
+- `psi-agent workspace snapshot` - Create workspace snapshot
+
+**Standalone format (also available):**
+- `psi-ai-openai-completions`
+- `psi-ai-anthropic-messages`
+- `psi-session`
+- `psi-channel-repl`
+- `psi-channel-cli`
+- `psi-channel-telegram`
+- `psi-workspace-pack`
+- `psi-workspace-unpack`
+- `psi-workspace-mount`
+- `psi-workspace-umount`
+- `psi-workspace-snapshot`
 
 ## Documentation
 
