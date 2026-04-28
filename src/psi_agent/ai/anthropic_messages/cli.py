@@ -21,6 +21,7 @@ class AnthropicMessages:
     model: str
     api_key: str
     base_url: str = "https://api.anthropic.com"
+    max_tokens: int = 4096
 
     def __call__(self) -> None:
         # Mask sensitive arguments from process title
@@ -31,6 +32,7 @@ class AnthropicMessages:
             model=self.model,
             api_key=self.api_key,
             base_url=self.base_url,
+            max_tokens=self.max_tokens,
         )
 
         logger.info("Starting psi-ai-anthropic-messages")

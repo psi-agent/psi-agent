@@ -111,6 +111,72 @@ class TestAnthropicMessagesClient:
                 assert call_kwargs[1]["model"] == "claude-sonnet-4-20250514"
 
     @pytest.mark.asyncio
+    async def test_model_session_placeholder_replacement(
+        self, client: AnthropicMessagesClient
+    ) -> None:
+        """Test model 'session' placeholder is replaced with configured model."""
+        mock_response = MagicMock()
+        mock_response.id = "msg_123"
+        mock_response.model_dump = MagicMock(
+            return_value={
+                "id": "msg_123",
+                "content": [{"type": "text", "text": "Response"}],
+            }
+        )
+
+        with patch("psi_agent.ai.anthropic_messages.client.AsyncAnthropic") as mock_anthropic:
+            mock_instance = AsyncMock()
+            mock_instance.messages.create = AsyncMock(return_value=mock_response)
+            mock_instance.close = AsyncMock()
+            mock_anthropic.return_value = mock_instance
+
+            async with client:
+                await client.messages(
+                    {
+                        "model": "session",  # Placeholder should be replaced
+                        "messages": [{"role": "user", "content": "Hello"}],
+                        "max_tokens": 1024,
+                    },
+                    stream=False,
+                )
+
+                # Check that model was replaced
+                call_kwargs = mock_instance.messages.create.call_args
+                assert call_kwargs[1]["model"] == "claude-sonnet-4-20250514"
+
+    @pytest.mark.asyncio
+    async def test_model_not_replaced_when_explicit(self, client: AnthropicMessagesClient) -> None:
+        """Test model is not replaced when explicit value (not 'session')."""
+        mock_response = MagicMock()
+        mock_response.id = "msg_123"
+        mock_response.model_dump = MagicMock(
+            return_value={
+                "id": "msg_123",
+                "content": [{"type": "text", "text": "Response"}],
+            }
+        )
+
+        with patch("psi_agent.ai.anthropic_messages.client.AsyncAnthropic") as mock_anthropic:
+            mock_instance = AsyncMock()
+            mock_instance.messages.create = AsyncMock(return_value=mock_response)
+            mock_instance.close = AsyncMock()
+            mock_anthropic.return_value = mock_instance
+
+            async with client:
+                await client.messages(
+                    {
+                        "model": "claude-opus-4",  # Explicit model should be preserved
+                        "messages": [{"role": "user", "content": "Hello"}],
+                        "max_tokens": 1024,
+                    },
+                    stream=False,
+                )
+
+                # Check that model was preserved
+                call_kwargs = mock_instance.messages.create.call_args
+                assert call_kwargs[1]["model"] == "claude-opus-4"
+
+    @pytest.mark.asyncio
     async def test_authentication_error(self, client: AnthropicMessagesClient) -> None:
         """Test authentication error handling."""
         from anthropic import AuthenticationError

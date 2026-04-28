@@ -93,6 +93,37 @@ class TestTranslateOpenAIToAnthropic:
 
         assert result["messages"][0]["content"] == [{"type": "text", "text": "Hello"}]
 
+    def test_default_max_tokens(self) -> None:
+        """Test default max_tokens is added when not provided."""
+        openai_request = {
+            "messages": [{"role": "user", "content": "Hello"}],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert result["max_tokens"] == 4096
+
+    def test_custom_max_tokens_default(self) -> None:
+        """Test custom max_tokens default is used when not provided."""
+        openai_request = {
+            "messages": [{"role": "user", "content": "Hello"}],
+        }
+
+        result = translate_openai_to_anthropic(openai_request, max_tokens=8192)
+
+        assert result["max_tokens"] == 8192
+
+    def test_max_tokens_not_overridden(self) -> None:
+        """Test max_tokens is not overridden when provided in request."""
+        openai_request = {
+            "messages": [{"role": "user", "content": "Hello"}],
+            "max_tokens": 2048,
+        }
+
+        result = translate_openai_to_anthropic(openai_request, max_tokens=8192)
+
+        assert result["max_tokens"] == 2048
+
 
 class TestTranslateAnthropicToOpenAI:
     """Tests for Anthropic to OpenAI response translation."""

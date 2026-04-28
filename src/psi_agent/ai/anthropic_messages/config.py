@@ -15,12 +15,14 @@ class AnthropicMessagesConfig:
         model: The model name to use for messages (e.g., "claude-sonnet-4-20250514").
         api_key: The API key for authentication.
         base_url: The base URL for the Anthropic API.
+        max_tokens: The maximum number of tokens to generate (default: 4096).
     """
 
     session_socket: str
     model: str
     api_key: str
     base_url: str = "https://api.anthropic.com"
+    max_tokens: int = 4096
 
     def socket_path(self) -> Path:
         """Get the socket path as a Path object."""
