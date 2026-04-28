@@ -309,13 +309,31 @@ Task instructions here...
 
 **所有 IO 操作必须使用 async 生态方法：**
 
-- **文件系统**：使用 `anyio.open_file()`（跨 async 框架抽象）
+- **文件系统**：使用 `anyio.open_file()` 或 `anyio.Path`（跨 async 框架抽象）
 - **网络请求**：使用 `aiohttp.ClientSession`（统一 HTTP 客户端）
 - **子进程**：使用 `asyncio.create_subprocess_exec` 或 `asyncio.create_subprocess_shell`（不是 `subprocess.run`）
+
+**禁止使用 `pathlib.Path` 进行文件 IO 操作** — 所有文件操作方法（`read_text()`, `exists()`, `iterdir()` 等）都是同步的，会阻塞事件循环。必须使用 `anyio.Path` 的 async 方法：`await anyio.Path(path).read_text()`、`await anyio.Path(path).exists()`、`async for p in anyio.Path(path).iterdir()` 等。`pathlib.Path` 可用于类型注解和路径拼接（无 IO 操作时）。
 
 示例：
 
 ```python
+# 正确 ✓ - async tool with anyio.Path
+async def tool(file_path: str) -> str:
+    path = anyio.Path(file_path)
+    if not await path.exists():
+        return "File not found"
+    content = await path.read_text()
+    return content
+
+# 错误 ✗ - 同步 pathlib.Path
+def tool(file_path: str) -> str:
+    path = Path(file_path)
+    if not path.exists():  # 阻塞!
+        return "File not found"
+    content = path.read_text()  # 阻塞!
+    return content
+
 # 正确 ✓ - async tool
 async def tool(command: str, timeout: int = 30) -> str:
     process = await asyncio.create_subprocess_shell(
@@ -648,3 +666,7 @@ uv run psi-agent ai openai-completions \
 uv run psi-agent channel repl \
   --session-socket ./channel.sock
 ```
+
+## Git 提交规范
+
+使用 OpenSpec 工作流完成变更后，归档目录（`openspec/changes/archive/YYYY-MM-DD-<change-name>/`）必须一同提交，以便追溯变更动机和设计决策。
