@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+import anyio
 from aiohttp import web
 from loguru import logger
 
@@ -155,9 +156,9 @@ class AnthropicMessagesServer:
         socket_path = self.config.socket_path()
 
         # Remove existing socket file if present
-        if socket_path.exists():
+        if await anyio.Path(socket_path).exists():
             logger.debug(f"Removing existing socket file: {socket_path}")
-            socket_path.unlink()
+            await anyio.Path(socket_path).unlink()
 
         # Initialize client
         self.client = AnthropicMessagesClient(self.config)
