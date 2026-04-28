@@ -1,4 +1,4 @@
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: systems/ 目录规范
 systems/system.py SHALL 提供两个 async 函数：`build_system_prompt()` 和 `compact_history()`。
@@ -20,25 +20,3 @@ systems/system.py SHALL 提供两个 async 函数：`build_system_prompt()` 和 
 - **THEN** SHALL 使用以下签名：
   - `async def build_system_prompt() -> str`
   - `async def compact_history(history: list[dict[str, str]], max_tokens: int = 4000) -> list[dict[str, str]]`
-
-### Requirement: async bash tool 接口
-tools/bash.py SHALL 提供 async `tool()` 函数，执行 shell 命令。
-
-#### Scenario: 执行命令
-- **WHEN** psi-session 调用 `await tool(command="ls -la")`
-- **THEN** 函数 SHALL 使用 asyncio.create_subprocess_exec 执行命令并返回输出结果
-
-#### Scenario: 命令超时
-- **WHEN** 命令执行超过 timeout 限制
-- **THEN** 函数 SHALL 使用 asyncio.wait_for 返回超时错误信息
-
-### Requirement: SKILL.md description 格式
-workspace/skills/*/SKILL.md 的 description SHALL 仅说明何时使用 skill，不暴露具体行为细节。
-
-#### Scenario: 懒加载 skill
-- **WHEN** psi-session 初始化时读取 skills description
-- **THEN** description SHALL 仅包含"何时使用"提示，具体行为在 SKILL.md 正文
-
-#### Scenario: 解析 SKILL.md
-- **WHEN** build_system_prompt() 读取 SKILL.md
-- **THEN** SHALL 使用异步 IO 正确解析 YAML frontmatter 并提取 description
