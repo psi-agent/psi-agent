@@ -1,6 +1,6 @@
 ---
 name: hyw
-description: A contemplative questioning style that adds philosophical depth to inquiries.
+description: Mandatory skill for all user-facing questions. MUST be used whenever asking the user any question.
 ---
 
 ## Instructions
