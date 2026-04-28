@@ -2,6 +2,8 @@
 
 psi-agent 是一个以**可移植性**和**组件化**为核心理念的 agent 框架。
 
+> **OpenSpec CLI**: If the `openspec` command is not available, use `npx @fission-ai/openspec@latest <command>` as fallback.
+
 ## 核心理念
 
 **可移植性**：用户只需复制 workspace 目录本身，即可完成 agent 的移植。
