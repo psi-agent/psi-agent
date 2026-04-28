@@ -2,6 +2,12 @@
 
 LLM provider adapter using HTTP over Unix socket with OpenAI chat completion protocol.
 
+## Purpose
+
+Adapter for OpenAI-compatible LLM APIs, providing a unified interface for chat completions via HTTP over Unix socket.
+
+## Requirements
+
 ### Requirement: 启动 HTTP server 监听 Unix socket
 psi-ai-openai-completions SHALL 在启动时创建 HTTP server，监听指定的 Unix socket 路径。
 
@@ -165,3 +171,19 @@ The OpenAI completions CLI SHALL mask the `--api-key` argument from the process 
 - **WHEN** `psi-ai-openai-completions` is started with `--api-key sk-xxx`
 - **THEN** the process title SHALL NOT contain `sk-xxx`
 - **AND** the process title SHALL show `--api-key ***`
+
+### Requirement: CLI imports follow Python module structure
+
+The `psi_agent.ai.__init__.py` file SHALL import CLI classes in a way that avoids E402 lint violations.
+
+#### Scenario: No E402 violations in ai __init__.py
+- **WHEN** running `ruff check src/psi_agent/ai/__init__.py`
+- **THEN** no E402 errors are reported
+
+#### Scenario: CLI commands still work
+- **WHEN** running `psi-agent ai openai-completions --help`
+- **THEN** the help text is displayed correctly
+
+#### Scenario: Anthropic messages command works
+- **WHEN** running `psi-agent ai anthropic-messages --help`
+- **THEN** the help text is displayed correctly

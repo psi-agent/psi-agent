@@ -79,7 +79,7 @@ class SessionServer:
         try:
             if stream:
                 logger.debug("Handling streaming request")
-                return await self._handle_streaming(user_message)
+                return await self._handle_streaming(request, user_message)
             else:
                 logger.debug("Handling non-streaming request")
                 return await self._handle_non_streaming(user_message)
@@ -110,10 +110,13 @@ class SessionServer:
             content_type="application/json",
         )
 
-    async def _handle_streaming(self, user_message: dict[str, Any]) -> web.StreamResponse:
+    async def _handle_streaming(
+        self, request: web.Request, user_message: dict[str, Any]
+    ) -> web.StreamResponse:
         """Handle streaming request.
 
         Args:
+            request: Incoming HTTP request.
             user_message: User message dict.
 
         Returns:
@@ -123,7 +126,7 @@ class SessionServer:
 
         response = web.StreamResponse()
         response.content_type = "text/event-stream"
-        await response.prepare(request=web.Request)  # type: ignore
+        await response.prepare(request)
 
         logger.debug("Starting SSE stream")
 

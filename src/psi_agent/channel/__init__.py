@@ -7,6 +7,10 @@ from typing import Annotated
 
 from tyro.conf import OmitSubcommandPrefixes
 
+from psi_agent.channel.cli.cli import Cli
+from psi_agent.channel.repl.cli import Repl
+from psi_agent.channel.telegram.cli import Telegram
+
 __all__ = ["Commands"]
 
 
@@ -18,9 +22,3 @@ class Commands:
 
     def __call__(self) -> None:
         self.subcommand()
-
-
-# Import after class definition to avoid circular imports
-from psi_agent.channel.cli.cli import Cli  # noqa: E402
-from psi_agent.channel.repl.cli import Repl  # noqa: E402
-from psi_agent.channel.telegram.cli import Telegram  # noqa: E402

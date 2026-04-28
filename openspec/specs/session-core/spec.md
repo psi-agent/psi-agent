@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Core session functionality that manages the agent's request-response cycle, tool execution, and communication with AI providers and channels.
+
+## Requirements
 
 ### Requirement: Session provides HTTP server on Unix socket
 
@@ -90,3 +94,23 @@ The session SHALL start the schedule executor when session starts.
 #### Scenario: No schedules directory
 - **WHEN** workspace does not have a `schedules/` directory
 - **THEN** session SHALL start normally without schedule executor
+
+### Requirement: Schedule.get_next_run returns properly typed datetime
+
+The `Schedule.get_next_run()` method SHALL return a properly typed `datetime` object without using type ignore comments.
+
+#### Scenario: Type checker accepts get_next_run return type
+- **WHEN** running `ty check` on `session/schedule.py`
+- **THEN** no type errors are reported for the `get_next_run` method
+
+### Requirement: SessionServer streaming handler uses correct request parameter
+
+The `_handle_streaming()` method in `SessionServer` SHALL pass the correct request object to `response.prepare()`.
+
+#### Scenario: Type checker accepts prepare call
+- **WHEN** running `ty check` on `session/server.py`
+- **THEN** no type errors are reported for the `response.prepare()` call
+
+#### Scenario: Streaming response works correctly
+- **WHEN** a streaming request is sent to the session server
+- **THEN** the response is properly prepared and streaming works as expected
