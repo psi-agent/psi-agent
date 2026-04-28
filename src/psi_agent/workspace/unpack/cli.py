@@ -23,7 +23,7 @@ class Unpack:
 
 def main() -> None:
     """CLI entry point."""
-    tyro.cli(Unpack)
+    tyro.cli(Unpack)()
 
 
 if __name__ == "__main__":

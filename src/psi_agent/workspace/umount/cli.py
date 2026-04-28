@@ -22,7 +22,7 @@ class Umount:
 
 def main() -> None:
     """CLI entry point."""
-    tyro.cli(Umount)
+    tyro.cli(Umount)()
 
 
 if __name__ == "__main__":

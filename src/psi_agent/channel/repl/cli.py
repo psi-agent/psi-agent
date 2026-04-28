@@ -30,7 +30,7 @@ class Repl:
 
 def main() -> None:
     """Main entry point for CLI."""
-    tyro.cli(Repl)
+    tyro.cli(Repl)()
 
 
 if __name__ == "__main__":

@@ -52,7 +52,7 @@ class Session:
 
 def main() -> None:
     """Main entry point for CLI."""
-    tyro.cli(Session)
+    tyro.cli(Session)()
 
 
 if __name__ == "__main__":

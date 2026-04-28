@@ -133,7 +133,7 @@ class Cli:
 
 def main() -> None:
     """Main entry point for CLI."""
-    tyro.cli(Cli)
+    tyro.cli(Cli)()
 
 
 if __name__ == "__main__":
