@@ -28,10 +28,10 @@ async def test_client_context_manager(config: OpenAICompletionsConfig) -> None:
 
     # Should work with context
     async with client:
-        assert client._client is not None
+        assert client._session is not None
 
     # Should be closed after context
-    assert client._client is None
+    assert client._session is None
 
 
 @pytest.mark.asyncio

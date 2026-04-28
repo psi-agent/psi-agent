@@ -112,18 +112,19 @@ workspace/
 
 ```python
 # tools/read.py
+import anyio
 
 async def tool(file_path: str) -> str:
     """Read file content asynchronously.
-    
+
     Args:
         file_path: Path to the file to read.
-    
+
     Returns:
         File content as string.
     """
-    # 使用 aiofiles 异步读取
-    async with aiofiles.open(file_path) as f:
+    # 使用 anyio 异步读取
+    async with await anyio.open_file(file_path) as f:
         return await f.read()
 ```
 
@@ -217,8 +218,8 @@ Task instructions here...
 
 **所有 IO 操作必须使用 async 生态方法：**
 
-- **文件系统**：使用 `aiofiles` 或 asyncio 包装
-- **网络请求**：使用 `httpx.AsyncClient` 或 `aiohttp`
+- **文件系统**：使用 `anyio.open_file()`（跨 async 框架抽象）
+- **网络请求**：使用 `aiohttp.ClientSession`（统一 HTTP 客户端）
 - **子进程**：使用 `asyncio.create_subprocess_exec` 或 `asyncio.create_subprocess_shell`（不是 `subprocess.run`）
 
 示例：
@@ -247,7 +248,7 @@ def tool(command: str) -> str:
 import 语句按以下顺序排列，每组内按字母排序：
 
 1. **stdlib**：Python 标准库模块
-2. **third-party**：第三方库（如 httpx, loguru）
+2. **third-party**：第三方库（如 aiohttp, anyio, loguru）
 3. **local**：本项目内部模块
 
 示例：
@@ -259,7 +260,8 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 # third-party
-import httpx
+import aiohttp
+import anyio
 from loguru import logger
 
 # local
@@ -348,18 +350,18 @@ class MyClass:
 ```python
 class MyClient:
     def __init__(self) -> None:
-        self._client: httpx.AsyncClient | None = None
+        self._session: aiohttp.ClientSession | None = None
 
     async def __aenter__(self) -> MyClient:
-        self._client = httpx.AsyncClient()
-        logger.debug("Initialized client")
+        self._session = aiohttp.ClientSession()
+        logger.debug("Initialized client session")
         return self
 
     async def __aexit__(self, _exc_type: Any, _exc_val: Any, _exc_tb: Any) -> None:
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
-            logger.debug("Closed client")
+        if self._session is not None:
+            await self._session.close()
+            self._session = None
+            logger.debug("Closed client session")
 ```
 
 ### 错误处理规范
@@ -375,15 +377,16 @@ class MyClient:
 ```python
 async def request(url: str) -> dict[str, Any]:
     try:
-        response = await self._client.post(url)
-        if response.status_code != 200:
-            logger.error(f"Request failed: {response.status_code}")
-            return {"error": response.text, "status_code": response.status_code}
-        return response.json()
-    except httpx.ConnectError as e:
+        async with self._session.post(url) as response:
+            if response.status != 200:
+                text = await response.text()
+                logger.error(f"Request failed: {response.status}")
+                return {"error": text, "status_code": response.status}
+            return await response.json()
+    except aiohttp.ClientConnectorError as e:
         logger.error(f"Connection failed: {e}")
         return {"error": "Connection failed", "status_code": 500}
-    except httpx.TimeoutException as e:
+    except asyncio.TimeoutError as e:
         logger.error(f"Request timeout: {e}")
         return {"error": "Request timeout", "status_code": 500}
 ```
@@ -461,6 +464,7 @@ workspace 中 tools 目录下的工具函数规范：
 
 ```python
 # tools/read.py
+import anyio
 
 async def tool(file_path: str) -> str:
     """Read file content asynchronously.
@@ -471,7 +475,7 @@ async def tool(file_path: str) -> str:
     Returns:
         File content as string.
     """
-    async with aiofiles.open(file_path) as f:
+    async with await anyio.open_file(file_path) as f:
         return await f.read()
 ```
 
