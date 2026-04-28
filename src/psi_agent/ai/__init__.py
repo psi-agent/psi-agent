@@ -7,11 +7,13 @@ from typing import Annotated
 
 from tyro.conf import OmitSubcommandPrefixes
 
+from psi_agent.ai.anthropic_messages.cli import AnthropicMessages
 from psi_agent.ai.openai_completions import (
     OpenAICompletionsClient,
     OpenAICompletionsConfig,
     OpenAICompletionsServer,
 )
+from psi_agent.ai.openai_completions.cli import OpenaiCompletions
 
 __all__ = [
     "OpenAICompletionsClient",
@@ -29,8 +31,3 @@ class Commands:
 
     def __call__(self) -> None:
         self.subcommand()
-
-
-# Import after class definition to avoid circular imports
-from psi_agent.ai.anthropic_messages.cli import AnthropicMessages  # noqa: E402
-from psi_agent.ai.openai_completions.cli import OpenaiCompletions  # noqa: E402

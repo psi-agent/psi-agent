@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import anyio
 import croniter
@@ -44,7 +44,7 @@ class Schedule:
         """
         if self._croniter is None:
             self._croniter = croniter.croniter(self.cron, datetime.now())
-        return self._croniter.get_next(datetime)  # type: ignore[no-any-return]
+        return cast(datetime, self._croniter.get_next(datetime))
 
     def get_seconds_until_next_run(self) -> float:
         """Get seconds until next scheduled run.

@@ -34,7 +34,7 @@ def main() -> None:
         | Annotated[WorkspaceCommands, subcommand("workspace")]
     )
 
-    result = tyro.cli(top_commands, prog_name="psi-agent")
+    result = tyro.cli(top_commands, prog_name="psi-agent")  # ty: ignore[no-matching-overload]
     result()
 
 
