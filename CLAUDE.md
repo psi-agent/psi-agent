@@ -599,10 +599,15 @@ async def tool(file_path: str) -> str:
 
 ### 启动命令示例
 
+psi-agent 提供两种 CLI 接口：
+
+1. **子命令接口（推荐）**：`psi-agent <组件> <子命令>`
+2. **独立命令**：`psi-<组件>-<子命令>`
+
 启动 session：
 
 ```bash
-uv run psi-session \
+psi-agent session \
   --workspace ./workspace \
   --channel-socket ./channel.sock \
   --ai-socket ./ai.sock
@@ -611,16 +616,16 @@ uv run psi-session \
 启动 AI 组件（OpenRouter 示例）：
 
 ```bash
-uv run psi-ai-openai-completions \
+psi-agent ai openai-completions \
   --session-socket ./ai.sock \
   --model tencent/hy3-preview:free \
   --api-key sk-or-v1-xxxxxx \
   --base-url https://openrouter.ai/api/v1
 ```
 
-启动 channel（TUI 示例）：
+启动 channel（REPL 示例）：
 
 ```bash
-uv run psi-channel-tui \
+psi-agent channel repl \
   --session-socket ./channel.sock
 ```
