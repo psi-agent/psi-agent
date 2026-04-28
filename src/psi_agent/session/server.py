@@ -10,6 +10,7 @@ from loguru import logger
 
 from psi_agent.session.config import SessionConfig
 from psi_agent.session.runner import SessionRunner
+from psi_agent.session.schedule import ScheduleExecutor, load_schedules
 
 
 class SessionServer:
@@ -25,6 +26,7 @@ class SessionServer:
         self.app = web.Application()
         self.runner: SessionRunner | None = None
         self._runner: web.AppRunner | None = None
+        self._schedule_executor: ScheduleExecutor | None = None
         self._setup_routes()
 
     def _setup_routes(self) -> None:
@@ -197,6 +199,12 @@ class SessionServer:
         self.runner = SessionRunner(self.config)
         await self.runner.__aenter__()
 
+        # Load and start schedules
+        schedules = await load_schedules(self.config.workspace_path())
+        if schedules:
+            self._schedule_executor = ScheduleExecutor(schedules, self.runner)
+            await self._schedule_executor.start()
+
         # Start server
         self._runner = web.AppRunner(self.app)
         await self._runner.setup()
@@ -211,6 +219,11 @@ class SessionServer:
 
     async def stop(self) -> None:
         """Stop the server."""
+        # Stop schedule executor
+        if self._schedule_executor is not None:
+            await self._schedule_executor.stop()
+            self._schedule_executor = None
+
         if self.runner is not None:
             await self.runner.__aexit__(None, None, None)
         if self._runner is not None:
