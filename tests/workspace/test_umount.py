@@ -50,9 +50,11 @@ class TestUmount:
 
         # Create valid mount info file
         mount_info = mount_dir / ".psi-mount-info"
-        mount_info.write_text(
-            f"{{'squashfs_mount': '{squashfs_mount}', 'upper_dir': '{upper_dir}', 'work_dir': '{work_dir}'}}"
+        mount_info_content = (
+            f"{{'squashfs_mount': '{squashfs_mount}', "
+            f"'upper_dir': '{upper_dir}', 'work_dir': '{work_dir}'}}"
         )
+        mount_info.write_text(mount_info_content)
 
         # Mock the _unmount and _cleanup_directory functions
         with (

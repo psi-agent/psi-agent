@@ -1,7 +1,7 @@
 """Tests for snapshot module."""
 
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -66,24 +66,21 @@ class TestSnapshot:
 
         # Create valid mount info file
         mount_info = mount_point / ".psi-mount-info"
-        mount_info.write_text(
-            f"{{'squashfs_mount': '{tmp_path}/squashfs', 'upper_dir': '{upper_dir}', 'work_dir': '{tmp_path}/work'}}"
+        mount_info_content = (
+            f"{{'squashfs_mount': '{tmp_path}/squashfs', "
+            f"'upper_dir': '{upper_dir}', 'work_dir': '{tmp_path}/work'}}"
         )
+        mount_info.write_text(mount_info_content)
 
         # Mock the internal functions to avoid needing actual squashfs tools
         with (
-            patch(
-                "psi_agent.workspace.snapshot.api._read_manifest_from_squashfs"
-            ) as mock_read,
-            patch(
-                "psi_agent.workspace.snapshot.api._extract_squashfs"
-            ) as mock_extract,
-            patch(
-                "psi_agent.workspace.snapshot.api._create_squashfs"
-            ) as mock_create,
+            patch("psi_agent.workspace.snapshot.api._read_manifest_from_squashfs") as mock_read,
+            patch("psi_agent.workspace.snapshot.api._extract_squashfs") as mock_extract,
+            patch("psi_agent.workspace.snapshot.api._create_squashfs") as mock_create,
         ):
-            from psi_agent.workspace.manifest import Manifest
             from uuid import uuid4
+
+            from psi_agent.workspace.manifest import Manifest
 
             mock_manifest = Manifest(layers={}, default=uuid4())
             mock_read.return_value = mock_manifest
