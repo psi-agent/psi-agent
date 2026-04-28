@@ -1,7 +1,10 @@
 """psi-channel-cli: Command-line channel for psi-agent."""
 
+from __future__ import annotations
+
 import asyncio
 import sys
+from dataclasses import dataclass
 
 import aiohttp
 import tyro
@@ -104,36 +107,33 @@ async def _handle_streaming(response: aiohttp.ClientResponse) -> str:
     return "".join(content_parts)
 
 
-def run(
-    session_socket: str,
-    message: str,
-    stream: bool = False,
-) -> None:
-    """Send a message to psi-session and print the response.
+@dataclass
+class Cli:
+    """Send a message to psi-session."""
 
-    Args:
-        session_socket: Path to the session Unix socket.
-        message: User message to send.
-        stream: Whether to use streaming response.
-    """
-    logger.debug(f"Connecting to session socket: {session_socket}")
-    logger.debug(f"Sending message: {message[:50]}...")
+    session_socket: str
+    message: str
+    stream: bool = False
 
-    result = asyncio.run(send_message(session_socket, message, stream))
+    def __call__(self) -> None:
+        logger.debug(f"Connecting to session socket: {self.session_socket}")
+        logger.debug(f"Sending message: {self.message[:50]}...")
 
-    # For non-streaming, print the result
-    # For streaming, it's already printed
-    if not stream:
-        print(result)
+        result = asyncio.run(send_message(self.session_socket, self.message, self.stream))
 
-    # Exit with appropriate code
-    if result.startswith("Error:"):
-        sys.exit(1)
+        # For non-streaming, print the result
+        # For streaming, it's already printed
+        if not self.stream:
+            print(result)
+
+        # Exit with appropriate code
+        if result.startswith("Error:"):
+            sys.exit(1)
 
 
 def main() -> None:
     """Main entry point for CLI."""
-    tyro.cli(run)
+    tyro.cli(Cli)
 
 
 if __name__ == "__main__":

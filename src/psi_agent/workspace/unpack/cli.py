@@ -1,28 +1,29 @@
 """CLI entry point for psi-workspace-unpack."""
 
+from __future__ import annotations
+
 import asyncio
+from dataclasses import dataclass
 
 import tyro
 
 from psi_agent.workspace.unpack.api import unpack
 
 
-def run(
-    input_file: str,
-    output_dir: str,
-) -> None:
-    """Unpack a squashfs image to a directory.
+@dataclass
+class Unpack:
+    """Unpack a squashfs image to a directory."""
 
-    Args:
-        input_file: Path to the squashfs file.
-        output_dir: Path for the output directory.
-    """
-    asyncio.run(unpack(input_file, output_dir))
+    input_file: str
+    output_dir: str
+
+    def __call__(self) -> None:
+        asyncio.run(unpack(self.input_file, self.output_dir))
 
 
 def main() -> None:
     """CLI entry point."""
-    tyro.cli(run)
+    tyro.cli(Unpack)
 
 
 if __name__ == "__main__":

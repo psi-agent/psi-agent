@@ -1,6 +1,9 @@
 """CLI entry point for OpenAI completions server."""
 
+from __future__ import annotations
+
 import asyncio
+from dataclasses import dataclass
 
 import tyro
 from loguru import logger
@@ -9,49 +12,47 @@ from psi_agent.ai.openai_completions.config import OpenAICompletionsConfig
 from psi_agent.ai.openai_completions.server import OpenAICompletionsServer
 
 
-def run(
-    session_socket: str,
-    model: str,
-    api_key: str,
-    base_url: str = "https://api.openai.com/v1",
-) -> None:
-    """Run the OpenAI completions server.
+@dataclass
+class OpenaiCompletions:
+    """Run OpenAI completions server."""
 
-    Args:
-        session_socket: Path to the Unix socket for communication with psi-session.
-        model: The model name to use for completions.
-        api_key: The API key for authentication.
-        base_url: The base URL for the OpenAI-compatible API.
-    """
-    config = OpenAICompletionsConfig(
-        session_socket=session_socket,
-        model=model,
-        api_key=api_key,
-        base_url=base_url,
-    )
+    session_socket: str
+    model: str
+    api_key: str
+    base_url: str = "https://api.openai.com/v1"
 
-    logger.info("Starting psi-ai-openai-completions")
-    logger.debug(f"Config: session_socket={session_socket}, model={model}, base_url={base_url}")
+    def __call__(self) -> None:
+        config = OpenAICompletionsConfig(
+            session_socket=self.session_socket,
+            model=self.model,
+            api_key=self.api_key,
+            base_url=self.base_url,
+        )
 
-    server = OpenAICompletionsServer(config)
+        logger.info("Starting psi-ai-openai-completions")
+        logger.debug(
+            f"Config: session_socket={self.session_socket}, "
+            f"model={self.model}, base_url={self.base_url}"
+        )
 
-    async def _run() -> None:
-        await server.start()
-        try:
-            # Keep running until interrupted
-            while True:
-                await asyncio.sleep(1)
-        except KeyboardInterrupt:
-            logger.info("Received interrupt signal")
-        finally:
-            await server.stop()
+        server = OpenAICompletionsServer(config)
 
-    asyncio.run(_run())
+        async def _run() -> None:
+            await server.start()
+            try:
+                while True:
+                    await asyncio.sleep(1)
+            except KeyboardInterrupt:
+                logger.info("Received interrupt signal")
+            finally:
+                await server.stop()
+
+        asyncio.run(_run())
 
 
 def main() -> None:
     """Main entry point for CLI."""
-    tyro.cli(run)
+    tyro.cli(OpenaiCompletions)
 
 
 if __name__ == "__main__":
