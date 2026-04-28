@@ -37,10 +37,12 @@ class TestAnthropicMessagesServer:
     def test_routes_configured(self, server: AnthropicMessagesServer) -> None:
         """Test that routes are configured."""
         routes = [r.resource.canonical for r in server.app.router.routes() if r.resource]
-        assert "/v1/messages" in routes
+        assert "/v1/chat/completions" in routes
 
     @pytest.mark.asyncio
-    async def test_handle_messages_invalid_json(self, server: AnthropicMessagesServer) -> None:
+    async def test_handle_chat_completions_invalid_json(
+        self, server: AnthropicMessagesServer
+    ) -> None:
         """Test handling invalid JSON request."""
         request = MagicMock()
         request.json = AsyncMock(side_effect=Exception("Invalid JSON"))
@@ -50,18 +52,18 @@ class TestAnthropicMessagesServer:
 
         request.json = AsyncMock(side_effect=json.JSONDecodeError("test", "test", 0))
 
-        response = await server._handle_messages(request)
+        response = await server._handle_chat_completions(request)
         assert response.status == 400
 
     @pytest.mark.asyncio
-    async def test_handle_messages_client_not_initialized(
+    async def test_handle_chat_completions_client_not_initialized(
         self, server: AnthropicMessagesServer
     ) -> None:
         """Test handling request when client not initialized."""
         request = MagicMock()
         request.json = AsyncMock(return_value={"messages": []})
 
-        response = await server._handle_messages(request)
+        response = await server._handle_chat_completions(request)
         assert response.status == 500
 
     @pytest.mark.asyncio
