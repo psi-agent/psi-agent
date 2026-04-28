@@ -57,7 +57,7 @@ async def _read_bootstrap_file(file_path: Path) -> str | None:
 
 def _build_identity_section() -> str:
     """Build the identity statement section."""
-    return "You are a personal assistant running inside OpenClaw."
+    return "You are a personal assistant running inside psi agent."
 
 
 def _build_tooling_section() -> str:
@@ -208,6 +208,7 @@ async def _build_skills_section(workspace: Path) -> str:
         "- If multiple could apply: choose the most specific one, then read/follow it.",
         "- If none clearly apply: do not read any SKILL.md.",
         "Constraints: never read more than one skill up front; only read after selecting.",
+        "- When a skill drives external API writes, assume rate limits: prefer fewer larger writes, avoid tight one-item loops, serialize bursts when possible, and respect 429/Retry-After.",
     ]
 
     if skill_descriptions:
@@ -256,19 +257,19 @@ def _build_silent_replies_section() -> str:
 
 
 async def _build_project_context_section(workspace: Path, is_main_session: bool) -> str:
-    """Build the Project Context section with bootstrap files.
+    """Build the Project Context section with stable bootstrap files.
 
     Args:
         workspace: Path to the workspace directory.
         is_main_session: Whether this is a main session.
     """
+    # Stable bootstrap files (before cache boundary)
     bootstrap_files = [
         "AGENTS.md",
         "SOUL.md",
         "TOOLS.md",
         "IDENTITY.md",
         "USER.md",
-        "HEARTBEAT.md",
         "BOOTSTRAP.md",
     ]
 
@@ -294,6 +295,33 @@ async def _build_project_context_section(workspace: Path, is_main_session: bool)
     return header + "\n\n".join(sections)
 
 
+async def _build_dynamic_context_section(workspace: Path) -> str:
+    """Build the Dynamic Project Context section with HEARTBEAT.md.
+
+    This section is placed after the cache boundary because HEARTBEAT.md
+    may change frequently.
+
+    Args:
+        workspace: Path to the workspace directory.
+    """
+    heartbeat_path = workspace / "HEARTBEAT.md"
+    content = await _read_bootstrap_file(heartbeat_path)
+
+    if content is None:
+        return ""
+
+    lines = [
+        "# Dynamic Project Context",
+        "",
+        "The following frequently-changing project context files are kept below the cache boundary when possible:",
+        "",
+        "## HEARTBEAT.md",
+        "",
+        content,
+    ]
+    return "\n".join(lines)
+
+
 async def build_system_prompt(
     is_main_session: bool = True,
     model: str = "unknown",
@@ -310,12 +338,13 @@ async def build_system_prompt(
     6. Workspace
     7. Skills
     8. Memory
-    9. Project Context (bootstrap files)
-    10. Cache Boundary
-    11. Heartbeats
-    12. Silent Replies
-    13. Current Date & Time
-    14. Runtime
+    9. Project Context (stable bootstrap files)
+    10. Silent Replies
+    11. Cache Boundary
+    12. Dynamic Project Context (HEARTBEAT.md)
+    13. Heartbeats
+    14. Current Date & Time
+    15. Runtime
 
     Args:
         is_main_session: Whether this is a main session (direct chat with user).
@@ -348,22 +377,34 @@ async def build_system_prompt(
         "",
     ]
 
-    # Project context (bootstrap files)
+    # Project context (stable bootstrap files)
     project_context = await _build_project_context_section(workspace, is_main_session)
     if project_context:
         stable_sections.append(project_context)
         stable_sections.append("")
 
+    # Silent replies before cache boundary
+    stable_sections.append(_build_silent_replies_section())
+    stable_sections.append("")
+
     # Dynamic sections (after cache boundary)
-    dynamic_sections = [
-        _build_heartbeats_section(),
-        "",
-        _build_silent_replies_section(),
-        "",
-        _build_datetime_section(timezone),
-        "",
-        _build_runtime_section(model),
-    ]
+    dynamic_sections = []
+
+    # Dynamic project context (HEARTBEAT.md)
+    dynamic_context = await _build_dynamic_context_section(workspace)
+    if dynamic_context:
+        dynamic_sections.append(dynamic_context)
+        dynamic_sections.append("")
+
+    dynamic_sections.extend(
+        [
+            _build_heartbeats_section(),
+            "",
+            _build_datetime_section(timezone),
+            "",
+            _build_runtime_section(model),
+        ]
+    )
 
     # Combine all sections
     prompt = "\n".join(stable_sections) + CACHE_BOUNDARY + "\n".join(dynamic_sections)

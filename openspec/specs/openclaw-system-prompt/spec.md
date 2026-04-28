@@ -1,5 +1,13 @@
 ## ADDED Requirements
 
+### Requirement: System prompt includes identity statement
+
+The system prompt builder SHALL include an identity statement at the beginning: "You are a personal assistant running inside psi agent."
+
+#### Scenario: Identity statement present
+- **WHEN** the system prompt is built
+- **THEN** the prompt begins with "You are a personal assistant running inside psi agent."
+
 ### Requirement: System prompt builder loads bootstrap files
 
 The system prompt builder SHALL load the following bootstrap files from the workspace root in order:
@@ -8,9 +16,10 @@ The system prompt builder SHALL load the following bootstrap files from the work
 3. TOOLS.md
 4. IDENTITY.md
 5. USER.md
-6. HEARTBEAT.md
-7. BOOTSTRAP.md
-8. MEMORY.md (only in main session context)
+6. BOOTSTRAP.md
+7. MEMORY.md (only in main session context)
+
+Note: HEARTBEAT.md is handled separately as dynamic context (see Dynamic context files requirement).
 
 #### Scenario: All bootstrap files present
 - **WHEN** all bootstrap files exist in the workspace root
@@ -60,9 +69,29 @@ The system prompt builder SHALL use async file I/O operations to read bootstrap 
 - **WHEN** reading bootstrap files
 - **THEN** the operation uses async I/O (anyio.open_file or equivalent) to avoid blocking the event loop
 
+### Requirement: Skills section includes rate limit guidance
+
+The system prompt builder SHALL include rate limit guidance in the Skills section to help agents avoid overwhelming external APIs.
+
+#### Scenario: Rate limit guidance present
+- **WHEN** the system prompt is built
+- **THEN** the Skills section includes guidance about rate limits, preferring fewer larger writes, avoiding tight loops, and respecting 429/Retry-After
+
+### Requirement: Dynamic context files placed after cache boundary
+
+The system prompt builder SHALL place HEARTBEAT.md after the cache boundary marker, separate from stable bootstrap files.
+
+#### Scenario: HEARTBEAT.md in dynamic section
+- **WHEN** the system prompt is built
+- **THEN** HEARTBEAT.md content appears after the cache boundary marker
+
+#### Scenario: Stable files before cache boundary
+- **WHEN** the system prompt is built
+- **THEN** AGENTS.md, SOUL.md, TOOLS.md, IDENTITY.md, USER.md, BOOTSTRAP.md, and MEMORY.md content appears before the cache boundary marker
+
 ### Requirement: System prompt combines all sections in order
 
-The system prompt builder SHALL combine all sections in a specific order: identity, tooling, tool call style, execution bias, safety, workspace, skills, memory, project context, cache boundary, heartbeats, silent replies, date/time, runtime.
+The system prompt builder SHALL combine all sections in a specific order: identity, tooling, tool call style, execution bias, safety, workspace, skills, memory, project context (stable), silent replies, cache boundary, dynamic project context (HEARTBEAT.md), heartbeats, date/time, runtime.
 
 #### Scenario: Section order
 - **WHEN** the system prompt is built

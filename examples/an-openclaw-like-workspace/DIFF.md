@@ -25,7 +25,7 @@
 
 | 部分 | 说明 |
 |------|------|
-| 身份声明 | "You are a personal assistant running inside OpenClaw." |
+| 身份声明 | "You are a personal assistant running inside psi agent." |
 | Tooling | 工具列表和描述 |
 | Tool Call Style | 工具调用风格指导（核心原则部分） |
 | Execution Bias | 执行偏好（行动导向、持续工作、需要证据） |
@@ -33,12 +33,13 @@
 | Workspace | 工作目录信息 |
 | Runtime | 运行时信息（host, os, arch, model, shell, Python版本） |
 | Project Context | Bootstrap 文件加载和拼接 |
-| Skills | 技能加载和使用指导 |
+| Skills | 技能加载、使用指导和速率限制指导 |
 | Memory | 记忆系统指导 |
 | Heartbeats | 心跳处理指导 |
 | Silent Replies | 静默回复规则 |
 | Current Date & Time | 当前日期和时间信息 |
 | Prompt Cache Boundary | 缓存边界标记 |
+| Dynamic Project Context | 动态上下文（HEARTBEAT.md）放在 cache boundary 之后 |
 
 ### 3. 工具实现
 
