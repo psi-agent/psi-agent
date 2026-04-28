@@ -68,7 +68,7 @@ class TestReplClient:
             mock_session.return_value = mock_session_instance
 
             async with client:
-                result = await client.send_message([{"role": "user", "content": "Hi"}])
+                result = await client.send_message("Hi")
 
                 assert result == "Hello!"
 
@@ -95,7 +95,7 @@ class TestReplClient:
             mock_session.return_value = mock_session_instance
 
             async with client:
-                result = await client.send_message([{"role": "user", "content": "Hi"}])
+                result = await client.send_message("Hi")
 
                 assert "Error" in result
 
@@ -122,7 +122,7 @@ class TestReplClient:
             mock_session.return_value = mock_session_instance
 
             async with client:
-                result = await client.send_message([{"role": "user", "content": "Hi"}])
+                result = await client.send_message("Hi")
 
                 assert "Error" in result
 
@@ -149,7 +149,7 @@ class TestReplClient:
             mock_session.return_value = mock_session_instance
 
             async with client:
-                result = await client.send_message([{"role": "user", "content": "Hi"}])
+                result = await client.send_message("Hi")
 
                 assert "Error" in result
 

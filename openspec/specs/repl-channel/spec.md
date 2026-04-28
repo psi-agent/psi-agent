@@ -44,21 +44,17 @@ The REPL SHALL send user messages to psi-session via Unix socket using HTTP POST
 - **WHEN** session returns a response
 - **THEN** REPL SHALL display the response content to stdout
 
-### Requirement: REPL maintains conversation history
+### Requirement: REPL sends only current message to session
 
-The REPL SHALL maintain a list of messages for conversation context.
+The REPL SHALL send only the current user message to session, not the entire conversation history. Session is the single source of truth for conversation state.
 
-#### Scenario: Add user message to history
-- **WHEN** user sends a message
-- **THEN** REPL SHALL add the message to conversation history
+#### Scenario: Send single message
+- **WHEN** user enters a message
+- **THEN** REPL SHALL send only that message to session
 
-#### Scenario: Add assistant message to history
-- **WHEN** session returns a response
-- **THEN** REPL SHALL add the response to conversation history
-
-#### Scenario: Send history with request
-- **WHEN** REPL sends a new message to session
-- **THEN** REPL SHALL include all previous messages in the request
+#### Scenario: Message format
+- **WHEN** REPL sends a message to session
+- **THEN** the request body SHALL contain a messages array with a single user message
 
 ### Requirement: REPL supports graceful exit
 

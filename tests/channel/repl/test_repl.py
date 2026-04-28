@@ -25,7 +25,6 @@ class TestRepl:
     def test_repl_creation(self, repl: Repl, config: ReplConfig) -> None:
         """Test REPL creation."""
         assert repl.config == config
-        assert repl.history == []
 
     def test_repl_has_client(self, repl: Repl) -> None:
         """Test REPL has client."""
@@ -85,15 +84,19 @@ class TestRepl:
         async def mock_read() -> str | None:
             return next(input_iter, None)
 
-        with patch.object(repl, "_read_input", mock_read), patch("builtins.print"):
+        with (
+            patch.object(repl, "_read_input", mock_read),
+            patch.object(repl.client, "send_message", AsyncMock(return_value="Response")),
+            patch("builtins.print"),
+        ):
             await repl.run()
 
-            # History should not have empty message
-            assert len(repl.history) == 0
+            # send_message should not have been called for empty input
+            repl.client.send_message.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_message_added_to_history(self, repl: Repl) -> None:
-        """Test message is added to history."""
+    async def test_message_sent_to_session(self, repl: Repl) -> None:
+        """Test message is sent to session."""
         inputs = ["Hello", "/quit"]
         input_iter = iter(inputs)
 
@@ -107,12 +110,8 @@ class TestRepl:
         ):
             await repl.run()
 
-            # Should have user and assistant messages
-            assert len(repl.history) == 2
-            assert repl.history[0]["role"] == "user"
-            assert repl.history[0]["content"] == "Hello"
-            assert repl.history[1]["role"] == "assistant"
-            assert repl.history[1]["content"] == "Hi there!"
+            # send_message should be called with the user input
+            repl.client.send_message.assert_called_once_with("Hello")
 
 
 class TestReplHistory:
@@ -166,8 +165,7 @@ class TestReplHistory:
             await repl.run()
 
             # Check multiline message preserved
-            assert len(repl.history) == 2
-            assert repl.history[0]["content"] == multiline_input
+            repl.client.send_message.assert_called_once_with(multiline_input)
 
 
 class TestReplEditing:
