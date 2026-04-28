@@ -13,6 +13,15 @@ psi-agent 基于两个核心原则构建：
 
 ## 安装
 
+### 使用 uvx（推荐）
+
+无需克隆仓库，快速使用：
+
+```bash
+uvx psi-agent <组件> <子命令> [选项...]
+# 例如：uvx psi-agent session --workspace ./workspace ...
+```
+
 ### 使用 pip
 
 ```bash

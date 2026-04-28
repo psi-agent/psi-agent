@@ -25,6 +25,7 @@ dev = [
 ]
 
 [project.scripts]
+psi-agent = "psi_agent.__main__:main"
 psi-ai-anthropic-messages = "psi_agent.ai.anthropic_messages.cli:main"
 psi-ai-openai-completions = "psi_agent.ai.openai_completions.cli:main"
 psi-session = "psi_agent.session.cli:main"
