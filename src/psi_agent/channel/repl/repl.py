@@ -1,11 +1,25 @@
 """REPL interface for interactive conversation."""
 
+from pathlib import Path
+
 from loguru import logger
 from prompt_toolkit import PromptSession
-from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.history import FileHistory
 
 from psi_agent.channel.repl.client import ReplClient
 from psi_agent.channel.repl.config import ReplConfig
+
+
+def _ensure_history_dir(history_path: Path) -> None:
+    """Ensure the directory for the history file exists.
+
+    Args:
+        history_path: Path to the history file.
+    """
+    history_dir = history_path.parent
+    if not history_dir.exists():
+        history_dir.mkdir(parents=True, exist_ok=True)
+        logger.debug(f"Created history directory: {history_dir}")
 
 
 class Repl:
@@ -27,8 +41,10 @@ class Repl:
         print("Type /quit or press Ctrl+D to exit")
         print("Press Alt+Enter or Escape+Enter for new line\n")
 
-        # Initialize prompt-toolkit session with history
-        self._session = PromptSession(history=InMemoryHistory())
+        # Initialize prompt-toolkit session with file-based history
+        history_path = self.config.get_history_path()
+        _ensure_history_dir(history_path)
+        self._session = PromptSession(history=FileHistory(str(history_path)))
 
         async with self.client:
             while True:
