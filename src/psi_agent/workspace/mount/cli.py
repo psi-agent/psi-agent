@@ -24,7 +24,7 @@ class Mount:
 
 def main() -> None:
     """CLI entry point."""
-    tyro.cli(Mount)
+    tyro.cli(Mount)()
 
 
 if __name__ == "__main__":

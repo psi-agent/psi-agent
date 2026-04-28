@@ -35,7 +35,7 @@ class Telegram:
 
 def main() -> None:
     """Main entry point for CLI."""
-    tyro.cli(Telegram)
+    tyro.cli(Telegram)()
 
 
 if __name__ == "__main__":

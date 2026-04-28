@@ -25,7 +25,7 @@ class Snapshot:
 
 def main() -> None:
     """CLI entry point."""
-    tyro.cli(Snapshot)
+    tyro.cli(Snapshot)()
 
 
 if __name__ == "__main__":

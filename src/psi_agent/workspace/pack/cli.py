@@ -24,7 +24,7 @@ class Pack:
 
 def main() -> None:
     """CLI entry point."""
-    tyro.cli(Pack)
+    tyro.cli(Pack)()
 
 
 if __name__ == "__main__":

@@ -56,7 +56,7 @@ class OpenaiCompletions:
 
 def main() -> None:
     """Main entry point for CLI."""
-    tyro.cli(OpenaiCompletions)
+    tyro.cli(OpenaiCompletions)()
 
 
 if __name__ == "__main__":
