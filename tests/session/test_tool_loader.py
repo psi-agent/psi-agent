@@ -3,6 +3,8 @@
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from psi_agent.session.tool_loader import (
     compute_file_hash,
     parse_google_docstring,
@@ -11,17 +13,18 @@ from psi_agent.session.tool_loader import (
 )
 
 
-def test_compute_file_hash():
+@pytest.mark.asyncio
+async def test_compute_file_hash():
     """Test file hash computation."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write("# test file\n")
         f.flush()
-        hash1 = compute_file_hash(Path(f.name))
-        assert hash1 == compute_file_hash(Path(f.name))  # Same content = same hash
+        hash1 = await compute_file_hash(Path(f.name))
+        assert hash1 == await compute_file_hash(Path(f.name))  # Same content = same hash
 
         f.write("# modified\n")
         f.flush()
-        hash2 = compute_file_hash(Path(f.name))
+        hash2 = await compute_file_hash(Path(f.name))
         assert hash1 != hash2  # Different content = different hash
 
 
@@ -60,7 +63,8 @@ def test_python_type_to_openai_type():
     assert python_type_to_openai_type(None) == "string"
 
 
-def test_scan_tools_directory():
+@pytest.mark.asyncio
+async def test_scan_tools_directory():
     """Test tools directory scanning."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tools_dir = Path(tmpdir)
@@ -72,7 +76,7 @@ def test_scan_tools_directory():
         )
         (tools_dir / "not_a_tool.txt").write_text("text file")
 
-        result = scan_tools_directory(tools_dir)
+        result = await scan_tools_directory(tools_dir)
 
         assert len(result) == 2
         assert "read" in result
@@ -80,14 +84,16 @@ def test_scan_tools_directory():
         assert "not_a_tool" not in result
 
 
-def test_scan_tools_directory_empty():
+@pytest.mark.asyncio
+async def test_scan_tools_directory_empty():
     """Test scanning empty directory."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        result = scan_tools_directory(Path(tmpdir))
+        result = await scan_tools_directory(Path(tmpdir))
         assert result == {}
 
 
-def test_scan_tools_directory_nonexistent():
+@pytest.mark.asyncio
+async def test_scan_tools_directory_nonexistent():
     """Test scanning nonexistent directory."""
-    result = scan_tools_directory(Path("/nonexistent/path"))
+    result = await scan_tools_directory(Path("/nonexistent/path"))
     assert result == {}

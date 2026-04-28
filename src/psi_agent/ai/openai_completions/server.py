@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
+import anyio
 from aiohttp import web
 from loguru import logger
 
@@ -149,14 +151,12 @@ class OpenAICompletionsServer:
 
     async def start(self) -> None:
         """Start the server on Unix socket."""
-        from pathlib import Path
-
         socket_path = Path(self.config.session_socket)
 
         # Remove existing socket file if present
-        if socket_path.exists():
+        if await anyio.Path(socket_path).exists():
             logger.debug(f"Removing existing socket file: {socket_path}")
-            socket_path.unlink()
+            await anyio.Path(socket_path).unlink()
 
         # Initialize client
         self.client = OpenAICompletionsClient(self.config)

@@ -102,7 +102,7 @@ async def load_schedule(task_dir: Path) -> Schedule | None:
         Schedule object, or None if invalid.
     """
     task_file = task_dir / "TASK.md"
-    if not task_file.exists():
+    if not await anyio.Path(task_file).exists():
         logger.debug(f"No TASK.md in {task_dir}")
         return None
 
@@ -143,14 +143,14 @@ async def load_schedules(workspace: Path) -> list[Schedule]:
         List of valid Schedule objects.
     """
     schedules_dir = workspace / "schedules"
-    if not schedules_dir.exists():
+    if not await anyio.Path(schedules_dir).exists():
         logger.debug("No schedules directory in workspace")
         return []
 
     schedules = []
-    for entry in schedules_dir.iterdir():
-        if entry.is_dir():
-            schedule = await load_schedule(entry)
+    async for entry in anyio.Path(schedules_dir).iterdir():
+        if await anyio.Path(entry).is_dir():
+            schedule = await load_schedule(Path(entry))
             if schedule is not None:
                 schedules.append(schedule)
                 logger.info(f"Loaded schedule: {schedule.name} (cron: {schedule.cron})")

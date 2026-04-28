@@ -11,12 +11,13 @@ from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any
 
+import anyio
 from loguru import logger
 
 from psi_agent.session.types import ToolRegistry, ToolSchema
 
 
-def compute_file_hash(file_path: Path) -> str:
+async def compute_file_hash(file_path: Path) -> str:
     """Compute MD5 hash of a file.
 
     Args:
@@ -25,7 +26,7 @@ def compute_file_hash(file_path: Path) -> str:
     Returns:
         MD5 hash string.
     """
-    content = file_path.read_bytes()
+    content = await anyio.Path(file_path).read_bytes()
     return hashlib.md5(content).hexdigest()
 
 
@@ -154,7 +155,7 @@ def generate_tool_schema(
     }
 
 
-def load_tool_from_file(file_path: Path) -> ToolSchema | None:
+async def load_tool_from_file(file_path: Path) -> ToolSchema | None:
     """Load a tool from a Python file.
 
     Args:
@@ -164,7 +165,7 @@ def load_tool_from_file(file_path: Path) -> ToolSchema | None:
         ToolSchema if successful, None if failed.
     """
     tool_name = file_path.stem
-    file_hash = compute_file_hash(file_path)
+    file_hash = await compute_file_hash(file_path)
 
     try:
         # Dynamic import
@@ -210,7 +211,7 @@ def load_tool_from_file(file_path: Path) -> ToolSchema | None:
         return None
 
 
-def scan_tools_directory(tools_dir: Path) -> dict[str, tuple[Path, str]]:
+async def scan_tools_directory(tools_dir: Path) -> dict[str, tuple[Path, str]]:
     """Scan tools directory and return file info.
 
     Args:
@@ -219,44 +220,44 @@ def scan_tools_directory(tools_dir: Path) -> dict[str, tuple[Path, str]]:
     Returns:
         Dict mapping tool name to (file_path, file_hash).
     """
-    if not tools_dir.exists():
+    if not await anyio.Path(tools_dir).exists():
         logger.debug(f"Tools directory does not exist: {tools_dir}")
         return {}
 
     tool_files: dict[str, tuple[Path, str]] = {}
 
-    for file_path in tools_dir.iterdir():
-        if file_path.is_file() and file_path.suffix == ".py":
+    async for file_path in anyio.Path(tools_dir).iterdir():
+        if await anyio.Path(file_path).is_file() and file_path.suffix == ".py":
             tool_name = file_path.stem
-            file_hash = compute_file_hash(file_path)
-            tool_files[tool_name] = (file_path, file_hash)
+            file_hash = await compute_file_hash(Path(file_path))
+            tool_files[tool_name] = (Path(file_path), file_hash)
 
     return tool_files
 
 
-def load_all_tools(tools_dir: Path, registry: ToolRegistry) -> None:
+async def load_all_tools(tools_dir: Path, registry: ToolRegistry) -> None:
     """Load all tools from directory into registry.
 
     Args:
         tools_dir: Path to the tools directory.
         registry: ToolRegistry to populate.
     """
-    tool_files = scan_tools_directory(tools_dir)
+    tool_files = await scan_tools_directory(tools_dir)
 
     for _tool_name, (file_path, _) in tool_files.items():
-        tool_schema = load_tool_from_file(file_path)
+        tool_schema = await load_tool_from_file(file_path)
         if tool_schema is not None:
             registry.register(tool_schema)
 
 
-def detect_and_update_tools(tools_dir: Path, registry: ToolRegistry) -> None:
+async def detect_and_update_tools(tools_dir: Path, registry: ToolRegistry) -> None:
     """Detect tool changes and update registry.
 
     Args:
         tools_dir: Path to the tools directory.
         registry: Existing ToolRegistry to update.
     """
-    current_files = scan_tools_directory(tools_dir)
+    current_files = await scan_tools_directory(tools_dir)
     current_names = set(current_files.keys())
     registered_names = set(registry.tools.keys())
 
@@ -264,7 +265,7 @@ def detect_and_update_tools(tools_dir: Path, registry: ToolRegistry) -> None:
     new_tools = current_names - registered_names
     for tool_name in new_tools:
         file_path, _ = current_files[tool_name]
-        tool_schema = load_tool_from_file(file_path)
+        tool_schema = await load_tool_from_file(file_path)
         if tool_schema is not None:
             registry.register(tool_schema)
             logger.info(f"Added new tool: {tool_name}")
@@ -282,7 +283,7 @@ def detect_and_update_tools(tools_dir: Path, registry: ToolRegistry) -> None:
         old_hash = registry.tools[tool_name].file_hash
 
         if new_hash != old_hash:
-            tool_schema = load_tool_from_file(file_path)
+            tool_schema = await load_tool_from_file(file_path)
             if tool_schema is not None:
                 registry.register(tool_schema)
                 logger.info(f"Updated tool: {tool_name}")

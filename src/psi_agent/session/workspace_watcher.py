@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import anyio
 from loguru import logger
 
 
@@ -77,7 +78,7 @@ class ChangeSummary:
         }
 
 
-def compute_file_hash(file_path: Path) -> str:
+async def compute_file_hash(file_path: Path) -> str:
     """Compute MD5 hash of a file.
 
     Args:
@@ -86,11 +87,11 @@ def compute_file_hash(file_path: Path) -> str:
     Returns:
         MD5 hash string.
     """
-    content = file_path.read_bytes()
+    content = await anyio.Path(file_path).read_bytes()
     return hashlib.md5(content).hexdigest()
 
 
-def scan_tools_directory(tools_dir: Path) -> dict[str, tuple[Path, str]]:
+async def scan_tools_directory(tools_dir: Path) -> dict[str, tuple[Path, str]]:
     """Scan tools directory and return file info.
 
     Args:
@@ -99,21 +100,21 @@ def scan_tools_directory(tools_dir: Path) -> dict[str, tuple[Path, str]]:
     Returns:
         Dict mapping tool name to (file_path, file_hash).
     """
-    if not tools_dir.exists():
+    if not await anyio.Path(tools_dir).exists():
         return {}
 
     tool_files: dict[str, tuple[Path, str]] = {}
 
-    for file_path in tools_dir.iterdir():
-        if file_path.is_file() and file_path.suffix == ".py":
+    async for file_path in anyio.Path(tools_dir).iterdir():
+        if await anyio.Path(file_path).is_file() and file_path.suffix == ".py":
             tool_name = file_path.stem
-            file_hash = compute_file_hash(file_path)
-            tool_files[tool_name] = (file_path, file_hash)
+            file_hash = await compute_file_hash(Path(file_path))
+            tool_files[tool_name] = (Path(file_path), file_hash)
 
     return tool_files
 
 
-def scan_skills_directory(skills_dir: Path) -> dict[str, tuple[Path, str]]:
+async def scan_skills_directory(skills_dir: Path) -> dict[str, tuple[Path, str]]:
     """Scan skills directory and return file info.
 
     Args:
@@ -122,23 +123,23 @@ def scan_skills_directory(skills_dir: Path) -> dict[str, tuple[Path, str]]:
     Returns:
         Dict mapping skill name to (skill_md_path, file_hash).
     """
-    if not skills_dir.exists():
+    if not await anyio.Path(skills_dir).exists():
         return {}
 
     skill_files: dict[str, tuple[Path, str]] = {}
 
-    for entry in skills_dir.iterdir():
-        if entry.is_dir():
+    async for entry in anyio.Path(skills_dir).iterdir():
+        if await anyio.Path(entry).is_dir():
             skill_md = entry / "SKILL.md"
-            if skill_md.exists():
+            if await anyio.Path(skill_md).exists():
                 skill_name = entry.name
-                file_hash = compute_file_hash(skill_md)
-                skill_files[skill_name] = (skill_md, file_hash)
+                file_hash = await compute_file_hash(Path(skill_md))
+                skill_files[skill_name] = (Path(skill_md), file_hash)
 
     return skill_files
 
 
-def scan_schedules_directory(schedules_dir: Path) -> dict[str, tuple[Path, str]]:
+async def scan_schedules_directory(schedules_dir: Path) -> dict[str, tuple[Path, str]]:
     """Scan schedules directory and return file info.
 
     Args:
@@ -147,18 +148,18 @@ def scan_schedules_directory(schedules_dir: Path) -> dict[str, tuple[Path, str]]
     Returns:
         Dict mapping schedule name to (task_md_path, file_hash).
     """
-    if not schedules_dir.exists():
+    if not await anyio.Path(schedules_dir).exists():
         return {}
 
     schedule_files: dict[str, tuple[Path, str]] = {}
 
-    for entry in schedules_dir.iterdir():
-        if entry.is_dir():
+    async for entry in anyio.Path(schedules_dir).iterdir():
+        if await anyio.Path(entry).is_dir():
             task_md = entry / "TASK.md"
-            if task_md.exists():
+            if await anyio.Path(task_md).exists():
                 schedule_name = entry.name
-                file_hash = compute_file_hash(task_md)
-                schedule_files[schedule_name] = (task_md, file_hash)
+                file_hash = await compute_file_hash(Path(task_md))
+                schedule_files[schedule_name] = (Path(task_md), file_hash)
 
     return schedule_files
 
@@ -177,7 +178,7 @@ class WorkspaceWatcher:
         self._skill_hashes: dict[str, str] = {}
         self._schedule_hashes: dict[str, str] = {}
 
-    def initialize(self) -> None:
+    async def initialize(self) -> None:
         """Initialize hashes for all workspace files.
 
         Should be called once at session startup.
@@ -187,13 +188,13 @@ class WorkspaceWatcher:
         schedules_dir = self.workspace / "schedules"
 
         # Scan and store initial hashes
-        tool_files = scan_tools_directory(tools_dir)
+        tool_files = await scan_tools_directory(tools_dir)
         self._tool_hashes = {name: hash_ for name, (_, hash_) in tool_files.items()}
 
-        skill_files = scan_skills_directory(skills_dir)
+        skill_files = await scan_skills_directory(skills_dir)
         self._skill_hashes = {name: hash_ for name, (_, hash_) in skill_files.items()}
 
-        schedule_files = scan_schedules_directory(schedules_dir)
+        schedule_files = await scan_schedules_directory(schedules_dir)
         self._schedule_hashes = {name: hash_ for name, (_, hash_) in schedule_files.items()}
 
         logger.debug(
@@ -201,7 +202,7 @@ class WorkspaceWatcher:
             f"{len(self._skill_hashes)} skills, {len(self._schedule_hashes)} schedules"
         )
 
-    def check_for_changes(self) -> ChangeSummary:
+    async def check_for_changes(self) -> ChangeSummary:
         """Check for changes in workspace files.
 
         Returns:
@@ -214,7 +215,7 @@ class WorkspaceWatcher:
         summary = ChangeSummary()
 
         # Check tools
-        current_tools = scan_tools_directory(tools_dir)
+        current_tools = await scan_tools_directory(tools_dir)
         current_tool_names = set(current_tools.keys())
         stored_tool_names = set(self._tool_hashes.keys())
 
@@ -240,7 +241,7 @@ class WorkspaceWatcher:
                 logger.info(f"Detected modified tool: {name}")
 
         # Check skills
-        current_skills = scan_skills_directory(skills_dir)
+        current_skills = await scan_skills_directory(skills_dir)
         current_skill_names = set(current_skills.keys())
         stored_skill_names = set(self._skill_hashes.keys())
 
@@ -266,7 +267,7 @@ class WorkspaceWatcher:
                 logger.info(f"Detected modified skill: {name}")
 
         # Check schedules
-        current_schedules = scan_schedules_directory(schedules_dir)
+        current_schedules = await scan_schedules_directory(schedules_dir)
         current_schedule_names = set(current_schedules.keys())
         stored_schedule_names = set(self._schedule_hashes.keys())
 

@@ -26,17 +26,17 @@ async def umount(
     Raises:
         UmountError: If umount operation fails.
     """
-    mount_path = Path(mount_point).resolve()
+    mount_path = Path(await anyio.Path(mount_point).resolve())
 
     # Validate mount point
-    if not mount_path.exists():
+    if not await anyio.Path(mount_path).exists():
         raise UmountError(f"Mount point does not exist: {mount_path}")
 
     logger.info(f"Unmounting workspace at {mount_path}")
 
     # Read mount info
     mount_info_path = mount_path / ".psi-mount-info"
-    if not mount_info_path.exists():
+    if not await anyio.Path(mount_info_path).exists():
         raise UmountError(f"Mount info file not found: {mount_info_path}")
 
     async with await anyio.open_file(mount_info_path) as f:
@@ -103,14 +103,14 @@ async def _cleanup_directory(dir_path: Path) -> None:
     Args:
         dir_path: Path to directory to remove.
     """
-    if not dir_path.exists():
+    if not await anyio.Path(dir_path).exists():
         return
 
     try:
         # Remove directory contents
-        for item in dir_path.iterdir():
-            if item.is_dir():
-                await _cleanup_directory(item)
+        async for item in anyio.Path(dir_path).iterdir():
+            if await anyio.Path(item).is_dir():
+                await _cleanup_directory(Path(item))
             else:
                 await anyio.Path(item).unlink()
 

@@ -34,13 +34,13 @@ async def pack(
     Raises:
         PackError: If pack operation fails.
     """
-    input_path = Path(input_dir).resolve()
-    output_path = Path(output_file).resolve()
+    input_path = Path(await anyio.Path(input_dir).resolve())
+    output_path = Path(await anyio.Path(output_file).resolve())
 
     # Validate input directory
-    if not input_path.exists():
+    if not await anyio.Path(input_path).exists():
         raise PackError(f"Input directory does not exist: {input_path}")
-    if not input_path.is_dir():
+    if not await anyio.Path(input_path).is_dir():
         raise PackError(f"Input path is not a directory: {input_path}")
 
     # Generate UUID for the layer
@@ -62,7 +62,7 @@ async def pack(
 
         # Create layer directory
         layer_dir = temp_path / layer_name
-        layer_dir.mkdir()
+        await anyio.Path(layer_dir).mkdir()
 
         # Copy input directory contents to layer directory
         await _copy_directory(input_path, layer_dir)
@@ -86,11 +86,11 @@ async def _copy_directory(src: Path, dst: Path) -> None:
         src: Source directory path.
         dst: Destination directory path.
     """
-    for item in src.iterdir():
+    async for item in anyio.Path(src).iterdir():
         dest_item = dst / item.name
-        if item.is_dir():
-            dest_item.mkdir()
-            await _copy_directory(item, dest_item)
+        if await anyio.Path(item).is_dir():
+            await anyio.Path(dest_item).mkdir()
+            await _copy_directory(Path(item), dest_item)
         else:
             async with await anyio.open_file(item, "rb") as src_file:
                 content = await src_file.read()
@@ -109,7 +109,7 @@ async def _create_squashfs(src_dir: Path, output_file: Path) -> None:
         PackError: If mksquashfs command fails.
     """
     # Ensure parent directory exists
-    output_file.parent.mkdir(parents=True, exist_ok=True)
+    await anyio.Path(output_file).parent.mkdir(parents=True, exist_ok=True)
 
     # Run mksquashfs command
     cmd = ["mksquashfs", str(src_dir), str(output_file), "-noappend", "-comp", "xz"]
