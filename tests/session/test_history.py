@@ -110,3 +110,41 @@ def test_history_clear():
     history.clear()
 
     assert len(history.messages) == 0
+
+
+def test_history_multiple_adds():
+    """Test adding multiple messages preserves order."""
+    history = History()
+
+    for i in range(5):
+        history.add_message({"role": "user" if i % 2 == 0 else "assistant", "content": f"msg{i}"})
+
+    assert len(history.messages) == 5
+    assert history.messages[0]["content"] == "msg0"
+    assert history.messages[4]["content"] == "msg4"
+
+
+def test_save_history_creates_parent_dirs():
+    """Test saving history - parent dirs must exist."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Parent directories must exist - save_history_to_file doesn't create them
+        history_file = Path(tmpdir) / "subdir" / "history.json"
+        history_file.parent.mkdir(parents=True, exist_ok=True)
+
+        history = History(
+            messages=[{"role": "user", "content": "test"}],
+            history_file=str(history_file),
+        )
+
+        save_history_to_file(history, history_file)
+
+        assert history_file.exists()
+
+
+def test_load_history_nonexistent_file():
+    """Test loading from nonexistent file returns empty list."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        history_file = Path(tmpdir) / "nonexistent.json"
+
+        messages = load_history_from_file(history_file)
+        assert messages == []

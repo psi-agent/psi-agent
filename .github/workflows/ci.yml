@@ -32,6 +32,9 @@ jobs:
       - name: Test
         run: uv run pytest
 
+      - name: Test coverage
+        run: uv run pytest --cov=src/psi_agent --cov-fail-under=60
+
   publish:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')

@@ -69,3 +69,8 @@ testpaths = ["tests"]
 
 [tool.ty.rules]
 no-matching-overload = "ignore"
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=7.1.0",
+]
