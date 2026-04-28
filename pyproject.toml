@@ -12,6 +12,7 @@ dependencies = [
     "anthropic>=0.57.1",
     "anyio>=4.13.0",
     "loguru>=0.7.3",
+    "openai>=1.30.0",
     "prompt-toolkit>=3.0.51",
     "tyro>=1.0.13",
 ]

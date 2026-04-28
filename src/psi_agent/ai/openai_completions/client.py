@@ -4,8 +4,9 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any
 
-import aiohttp
 from loguru import logger
+from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletion
 
 from psi_agent.ai.openai_completions.config import OpenAICompletionsConfig
 
@@ -20,22 +21,23 @@ class OpenAICompletionsClient:
             config: The configuration for the client.
         """
         self.config = config
-        self._session: aiohttp.ClientSession | None = None
-        self._timeout: aiohttp.ClientTimeout | None = None
+        self._client: AsyncOpenAI | None = None
 
     async def __aenter__(self) -> OpenAICompletionsClient:
         """Enter async context."""
-        self._timeout = aiohttp.ClientTimeout(total=60, connect=10)
-        self._session = aiohttp.ClientSession(timeout=self._timeout)
-        logger.debug(f"Initialized aiohttp ClientSession for {self.config.base_url}")
+        self._client = AsyncOpenAI(
+            api_key=self.config.api_key,
+            base_url=self.config.base_url,
+        )
+        logger.debug(f"Initialized AsyncOpenAI client for {self.config.base_url}")
         return self
 
     async def __aexit__(self, _exc_type: Any, _exc_val: Any, _exc_tb: Any) -> None:
         """Exit async context."""
-        if self._session is not None:
-            await self._session.close()
-            self._session = None
-            logger.debug("Closed aiohttp ClientSession")
+        if self._client is not None:
+            await self._client.close()
+            self._client = None
+            logger.debug("Closed AsyncOpenAI client")
 
     async def chat_completions(
         self, request_body: dict[str, Any], stream: bool = False
@@ -50,20 +52,14 @@ class OpenAICompletionsClient:
             For non-streaming: The response body as a dict.
             For streaming: An async generator of SSE chunks.
         """
-        if self._session is None:
+        if self._client is None:
             raise RuntimeError("Client not initialized. Use async context manager.")
 
         # Inject model if not present
         if "model" not in request_body:
             request_body["model"] = self.config.model
 
-        url = f"{self.config.base_url}/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {self.config.api_key}",
-            "Content-Type": "application/json",
-        }
-
-        logger.info(f"Sending request to {url}")
+        logger.info(f"Sending request to {self.config.base_url}/chat/completions")
         logger.debug("Request headers: Authorization=Bearer *** (hidden)")
         body_summary = {
             k: v if k != "messages" else f"[{len(v)} messages]" for k, v in request_body.items()
@@ -71,98 +67,91 @@ class OpenAICompletionsClient:
         logger.debug(f"Request body summary: {body_summary}")
 
         if stream:
-            return self._stream_request(url, headers, request_body)
+            return self._stream_request(request_body)
         else:
-            return await self._non_stream_request(url, headers, request_body)
+            return await self._non_stream_request(request_body)
 
-    async def _non_stream_request(
-        self, url: str, headers: dict[str, str], body: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def _non_stream_request(self, body: dict[str, Any]) -> dict[str, Any]:
         """Send non-streaming request.
 
         Args:
-            url: The API URL.
-            headers: The request headers.
             body: The request body.
 
         Returns:
             The response body as a dict.
         """
-        assert self._session is not None
+        assert self._client is not None
 
         try:
-            async with self._session.post(url, headers=headers, json=body) as response:
-                logger.debug(f"Response status: {response.status}")
+            response: ChatCompletion = await self._client.chat.completions.create(**body)
+            logger.info("Received successful non-streaming response")
+            logger.debug(f"Response id: {response.id}")
+            return response.model_dump()
 
-                if response.status == 401:
-                    logger.error("API authentication failed (401)")
-                    return {"error": "Authentication failed", "status_code": 401}
+        except Exception as e:
+            return self._handle_error(e)
 
-                if response.status != 200:
-                    text = await response.text()
-                    logger.error(f"API request failed with status {response.status}")
-                    return {"error": text, "status_code": response.status}
-
-                result = await response.json()
-                logger.info("Received successful non-streaming response")
-                logger.debug(f"Response keys: {list(result.keys())}")
-                return result
-
-        except aiohttp.ClientConnectorError as e:
-            logger.error(f"Failed to connect to upstream API: {e}")
-            return {"error": "Connection failed", "status_code": 500}
-
-    async def _stream_request(
-        self, url: str, headers: dict[str, str], body: dict[str, Any]
-    ) -> AsyncGenerator[str]:
+    async def _stream_request(self, body: dict[str, Any]) -> AsyncGenerator[str]:
         """Send streaming request.
 
         Args:
-            url: The API URL.
-            headers: The request headers.
             body: The request body.
 
         Yields:
             SSE chunks as strings.
         """
-        assert self._session is not None
+        assert self._client is not None
 
         body["stream"] = True
         try:
-            async with self._session.post(url, headers=headers, json=body) as response:
-                logger.debug(f"Stream response status: {response.status}")
+            logger.info("Starting streaming request")
+            stream = await self._client.chat.completions.create(**body)
+            async for chunk in stream:
+                yield f"data: {chunk.model_dump_json()}\n\n"
 
-                if response.status == 401:
-                    logger.error("API authentication failed (401) during streaming")
-                    error_data = {"error": "Authentication failed", "status_code": 401}
-                    yield f"data: {json.dumps(error_data)}\n\n"
-                    return
+            logger.info("Streaming response completed")
+            yield "data: [DONE]\n\n"
 
-                if response.status != 200:
-                    text = await response.text()
-                    logger.error(f"Stream request failed with status {response.status}")
-                    error_data = {"error": text, "status_code": response.status}
-                    yield f"data: {json.dumps(error_data)}\n\n"
-                    return
+        except Exception as e:
+            error_response = self._handle_error(e)
+            yield f"data: {json.dumps(error_response)}\n\n"
 
-                logger.info("Started streaming response")
-                # aiohttp uses response.content for streaming
-                async for line in response.content:
-                    line_text = line.decode().strip()
-                    if line_text.startswith("data: "):
-                        yield line_text + "\n"
-                    elif line_text == "":
-                        yield "\n"
+    def _handle_error(self, e: Exception) -> dict[str, Any]:
+        """Handle API errors and return error response.
 
-                logger.info("Streaming response completed")
-                yield "data: [DONE]\n\n"
+        Args:
+            e: The exception that occurred.
 
-        except aiohttp.ClientConnectorError as e:
-            logger.error(f"Failed to connect to upstream API during streaming: {e}")
-            error_data = {"error": "Connection failed", "status_code": 500}
-            yield f"data: {json.dumps(error_data)}\n\n"
+        Returns:
+            Error dict with status_code.
+        """
+        from openai import (
+            APIConnectionError,
+            APIStatusError,
+            APITimeoutError,
+            AuthenticationError,
+            RateLimitError,
+        )
 
-        except TimeoutError as e:
-            logger.error(f"Stream timeout: {e}")
-            error_data = {"error": "Request timeout", "status_code": 500}
-            yield f"data: {json.dumps(error_data)}\n\n"
+        if isinstance(e, AuthenticationError):
+            logger.error(f"Authentication failed: {e}")
+            return {"error": "Authentication failed", "status_code": 401}
+
+        if isinstance(e, RateLimitError):
+            logger.error(f"Rate limit exceeded: {e}")
+            return {"error": "Rate limit exceeded", "status_code": 429}
+
+        if isinstance(e, APITimeoutError):
+            logger.error(f"Request timeout: {e}")
+            return {"error": "Request timeout", "status_code": 500}
+
+        if isinstance(e, APIConnectionError):
+            logger.error(f"Connection failed: {e}")
+            return {"error": "Connection failed", "status_code": 500}
+
+        if isinstance(e, APIStatusError):
+            logger.error(f"API error {e.status_code}: {e}")
+            return {"error": str(e), "status_code": e.status_code or 500}
+
+        logger.exception(f"Unexpected error: {e}")
+        return {"error": str(e), "status_code": 500}
