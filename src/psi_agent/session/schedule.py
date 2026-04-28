@@ -172,6 +172,7 @@ class ScheduleExecutor:
         self.runner = runner
         self._tasks: list[asyncio.Task[None]] = []
         self._running = False
+        self._schedule_map: dict[str, asyncio.Task[None]] = {}
 
     async def start(self) -> None:
         """Start all schedule loops."""
@@ -183,6 +184,7 @@ class ScheduleExecutor:
         for schedule in self.schedules:
             task = asyncio.create_task(self._schedule_loop(schedule))
             self._tasks.append(task)
+            self._schedule_map[schedule.name] = task
             logger.info(f"Started schedule loop for: {schedule.name}")
 
     async def stop(self) -> None:
@@ -236,3 +238,56 @@ class ScheduleExecutor:
             logger.info(f"Completed scheduled task: {schedule.name}")
         except Exception as e:
             logger.error(f"Failed to execute scheduled task {schedule.name}: {e}")
+
+    async def add_schedule(self, schedule: Schedule) -> None:
+        """Add a new schedule to the executor.
+
+        Args:
+            schedule: The schedule to add.
+        """
+        self.schedules.append(schedule)
+        if self._running:
+            task = asyncio.create_task(self._schedule_loop(schedule))
+            self._tasks.append(task)
+            self._schedule_map[schedule.name] = task
+            logger.info(f"Added and started schedule: {schedule.name}")
+
+    async def remove_schedule(self, schedule_name: str) -> None:
+        """Remove a schedule from the executor.
+
+        Args:
+            schedule_name: Name of the schedule to remove.
+        """
+        # Find and remove from list
+        schedule_to_remove = None
+        for schedule in self.schedules:
+            if schedule.name == schedule_name:
+                schedule_to_remove = schedule
+                break
+
+        if schedule_to_remove is None:
+            logger.warning(f"Schedule not found: {schedule_name}")
+            return
+
+        self.schedules.remove(schedule_to_remove)
+
+        # Cancel running task if exists
+        if schedule_name in self._schedule_map:
+            task = self._schedule_map[schedule_name]
+            task.cancel()
+            del self._schedule_map[schedule_name]
+            # Also remove from _tasks list
+            if task in self._tasks:
+                self._tasks.remove(task)
+            logger.info(f"Removed schedule: {schedule_name}")
+
+    async def update_schedule(self, schedule: Schedule) -> None:
+        """Update an existing schedule.
+
+        Args:
+            schedule: The updated schedule.
+        """
+        # Remove old one and add new one
+        await self.remove_schedule(schedule.name)
+        await self.add_schedule(schedule)
+        logger.info(f"Updated schedule: {schedule.name}")

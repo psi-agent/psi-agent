@@ -203,6 +203,8 @@ class SessionServer:
         schedules = await load_schedules(self.config.workspace_path())
         if schedules:
             self._schedule_executor = ScheduleExecutor(schedules, self.runner)
+            # Connect runner to executor for hot-reload
+            self.runner.set_schedule_executor(self._schedule_executor)
             await self._schedule_executor.start()
 
         # Start server

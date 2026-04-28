@@ -51,6 +51,23 @@ Agent 流程：
 - skills 的 description 放在 system prompt 中
 - LLM 可调用阅读类 tool 查看 skill 详情
 
+**Workspace 热重载：**
+
+psi-session 支持运行时热重载 workspace 文件变更：
+
+- **检测时机**：每次处理用户消息前
+- **检测方式**：MD5 文件哈希比较
+- **检测范围**：
+  - `tools/*.py` — 工具文件
+  - `skills/*/SKILL.md` — 技能文件
+  - `schedules/*/TASK.md` — 定时任务文件
+- **变更响应**：
+  - 工具变更：更新工具注册表
+  - 技能/定时任务变更：重新构建系统提示词
+  - 定时任务变更：更新定时执行器
+
+**限制**：`systems/system.py` 不支持热重载，修改后需重启 session。
+
 接口：
 - 与 channel：HTTP over Unix socket，OpenAI chat completion 协议
 - 与 psi-ai-*：HTTP over Unix socket，OpenAI chat completion 协议
