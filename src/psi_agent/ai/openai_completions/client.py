@@ -4,7 +4,7 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any
 
-import httpx
+import aiohttp
 from loguru import logger
 
 from psi_agent.ai.openai_completions.config import OpenAICompletionsConfig
@@ -20,20 +20,22 @@ class OpenAICompletionsClient:
             config: The configuration for the client.
         """
         self.config = config
-        self._client: httpx.AsyncClient | None = None
+        self._session: aiohttp.ClientSession | None = None
+        self._timeout: aiohttp.ClientTimeout | None = None
 
     async def __aenter__(self) -> OpenAICompletionsClient:
         """Enter async context."""
-        self._client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0))
-        logger.debug(f"Initialized httpx AsyncClient for {self.config.base_url}")
+        self._timeout = aiohttp.ClientTimeout(total=60, connect=10)
+        self._session = aiohttp.ClientSession(timeout=self._timeout)
+        logger.debug(f"Initialized aiohttp ClientSession for {self.config.base_url}")
         return self
 
     async def __aexit__(self, _exc_type: Any, _exc_val: Any, _exc_tb: Any) -> None:
         """Exit async context."""
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
-            logger.debug("Closed httpx AsyncClient")
+        if self._session is not None:
+            await self._session.close()
+            self._session = None
+            logger.debug("Closed aiohttp ClientSession")
 
     async def chat_completions(
         self, request_body: dict[str, Any], stream: bool = False
@@ -48,7 +50,7 @@ class OpenAICompletionsClient:
             For non-streaming: The response body as a dict.
             For streaming: An async generator of SSE chunks.
         """
-        if self._client is None:
+        if self._session is None:
             raise RuntimeError("Client not initialized. Use async context manager.")
 
         # Inject model if not present
@@ -86,31 +88,29 @@ class OpenAICompletionsClient:
         Returns:
             The response body as a dict.
         """
-        assert self._client is not None
+        assert self._session is not None
 
         try:
-            response = await self._client.post(url, headers=headers, json=body)
-            logger.debug(f"Response status: {response.status_code}")
+            async with self._session.post(url, headers=headers, json=body) as response:
+                logger.debug(f"Response status: {response.status}")
 
-            if response.status_code == 401:
-                logger.error("API authentication failed (401)")
-                return {"error": "Authentication failed", "status_code": 401}
+                if response.status == 401:
+                    logger.error("API authentication failed (401)")
+                    return {"error": "Authentication failed", "status_code": 401}
 
-            if response.status_code != 200:
-                logger.error(f"API request failed with status {response.status_code}")
-                return {"error": response.text, "status_code": response.status_code}
+                if response.status != 200:
+                    text = await response.text()
+                    logger.error(f"API request failed with status {response.status}")
+                    return {"error": text, "status_code": response.status}
 
-            result = response.json()
-            logger.info("Received successful non-streaming response")
-            logger.debug(f"Response keys: {list(result.keys())}")
-            return result
+                result = await response.json()
+                logger.info("Received successful non-streaming response")
+                logger.debug(f"Response keys: {list(result.keys())}")
+                return result
 
-        except httpx.ConnectError as e:
+        except aiohttp.ClientConnectorError as e:
             logger.error(f"Failed to connect to upstream API: {e}")
             return {"error": "Connection failed", "status_code": 500}
-        except httpx.TimeoutException as e:
-            logger.error(f"Request timeout: {e}")
-            return {"error": "Request timeout", "status_code": 500}
 
     async def _stream_request(
         self, url: str, headers: dict[str, str], body: dict[str, Any]
@@ -125,40 +125,44 @@ class OpenAICompletionsClient:
         Yields:
             SSE chunks as strings.
         """
-        assert self._client is not None
+        assert self._session is not None
 
         body["stream"] = True
         try:
-            async with self._client.stream("POST", url, headers=headers, json=body) as response:
-                logger.debug(f"Stream response status: {response.status_code}")
+            async with self._session.post(url, headers=headers, json=body) as response:
+                logger.debug(f"Stream response status: {response.status}")
 
-                if response.status_code == 401:
+                if response.status == 401:
                     logger.error("API authentication failed (401) during streaming")
                     error_data = {"error": "Authentication failed", "status_code": 401}
                     yield f"data: {json.dumps(error_data)}\n\n"
                     return
 
-                if response.status_code != 200:
-                    logger.error(f"Stream request failed with status {response.status_code}")
-                    error_data = {"error": response.text, "status_code": response.status_code}
+                if response.status != 200:
+                    text = await response.text()
+                    logger.error(f"Stream request failed with status {response.status}")
+                    error_data = {"error": text, "status_code": response.status}
                     yield f"data: {json.dumps(error_data)}\n\n"
                     return
 
                 logger.info("Started streaming response")
-                async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        yield line + "\n"
-                    elif line == "":
+                # aiohttp uses response.content for streaming
+                async for line in response.content:
+                    line_text = line.decode().strip()
+                    if line_text.startswith("data: "):
+                        yield line_text + "\n"
+                    elif line_text == "":
                         yield "\n"
 
                 logger.info("Streaming response completed")
                 yield "data: [DONE]\n\n"
 
-        except httpx.ConnectError as e:
+        except aiohttp.ClientConnectorError as e:
             logger.error(f"Failed to connect to upstream API during streaming: {e}")
             error_data = {"error": "Connection failed", "status_code": 500}
             yield f"data: {json.dumps(error_data)}\n\n"
-        except httpx.TimeoutException as e:
+
+        except TimeoutError as e:
             logger.error(f"Stream timeout: {e}")
             error_data = {"error": "Request timeout", "status_code": 500}
             yield f"data: {json.dumps(error_data)}\n\n"
