@@ -13,9 +13,11 @@ from loguru import logger
 
 from psi_agent.session.config import SessionConfig
 from psi_agent.session.history import initialize_history, persist_history
+from psi_agent.session.schedule import Schedule, ScheduleExecutor
 from psi_agent.session.tool_executor import execute_tools_parallel
 from psi_agent.session.tool_loader import detect_and_update_tools, load_all_tools
 from psi_agent.session.types import History, ToolRegistry
+from psi_agent.session.workspace_watcher import ChangeSummary, WorkspaceWatcher
 
 
 async def load_system_prompt(workspace: Path) -> str | None:
@@ -71,11 +73,17 @@ class SessionRunner:
         self.history: History | None = None
         self.client: aiohttp.ClientSession | None = None
         self._system_prompt_cache: str | None = None
+        self._watcher: WorkspaceWatcher | None = None
+        self._schedule_executor: ScheduleExecutor | None = None
 
     async def __aenter__(self) -> SessionRunner:
         """Initialize session resources."""
         # Initialize history
         self.history = initialize_history(self.config.history_file)
+
+        # Initialize workspace watcher
+        self._watcher = WorkspaceWatcher(self.config.workspace_path())
+        self._watcher.initialize()
 
         # Load tools
         tools_dir = self.config.tools_dir()
@@ -99,6 +107,62 @@ class SessionRunner:
             self.client = None
             logger.debug("Closed AI client")
 
+    def set_schedule_executor(self, executor: ScheduleExecutor) -> None:
+        """Set the schedule executor for hot-reload updates.
+
+        Args:
+            executor: The schedule executor instance.
+        """
+        self._schedule_executor = executor
+
+    async def _handle_workspace_changes(self, changes: ChangeSummary) -> None:
+        """Handle detected workspace changes.
+
+        Args:
+            changes: Summary of detected changes.
+        """
+        # Handle tool changes
+        if changes.tools_changed:
+            detect_and_update_tools(self.config.tools_dir(), self.registry)
+
+        # Handle skill/schedule changes - rebuild system prompt
+        if changes.skills_changed or changes.schedules_changed:
+            logger.info("Rebuilding system prompt due to workspace changes")
+            self._system_prompt_cache = await load_system_prompt(self.config.workspace_path())
+
+        # Handle schedule changes
+        if changes.schedules_changed and self._schedule_executor is not None:
+            workspace = self.config.workspace_path()
+            schedules_dir = workspace / "schedules"
+
+            # Load new/modified schedules
+            for name in changes.schedules_added + changes.schedules_modified:
+                task_dir = schedules_dir / name
+                schedule = await self._load_single_schedule(task_dir)
+                if schedule is not None:
+                    if name in changes.schedules_added:
+                        await self._schedule_executor.add_schedule(schedule)
+                    else:
+                        await self._schedule_executor.update_schedule(schedule)
+
+            # Remove deleted schedules
+            for name in changes.schedules_removed:
+                await self._schedule_executor.remove_schedule(name)
+
+    async def _load_single_schedule(self, task_dir: Path) -> Schedule | None:
+        """Load a single schedule from a task directory.
+
+        Args:
+            task_dir: Path to the task directory containing TASK.md.
+
+        Returns:
+            Schedule object, or None if invalid.
+        """
+        # Import here to avoid circular dependency
+        from psi_agent.session.schedule import load_schedule
+
+        return await load_schedule(task_dir)
+
     async def process_request(self, user_message: dict[str, Any]) -> dict[str, Any]:
         """Process a user request and return response.
 
@@ -111,8 +175,11 @@ class SessionRunner:
         assert self.history is not None
         assert self.client is not None
 
-        # Check for tool updates
-        detect_and_update_tools(self.config.tools_dir(), self.registry)
+        # Check for workspace changes
+        if self._watcher is not None:
+            changes = self._watcher.check_for_changes()
+            if changes.has_changes:
+                await self._handle_workspace_changes(changes)
 
         # Add user message to history
         self.history.add_message(user_message)
@@ -239,8 +306,11 @@ class SessionRunner:
         assert self.history is not None
         assert self.client is not None
 
-        # Check for tool updates
-        detect_and_update_tools(self.config.tools_dir(), self.registry)
+        # Check for workspace changes
+        if self._watcher is not None:
+            changes = self._watcher.check_for_changes()
+            if changes.has_changes:
+                await self._handle_workspace_changes(changes)
 
         # Add user message to history
         self.history.add_message(user_message)
