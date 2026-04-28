@@ -7,11 +7,14 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 
-def translate_openai_to_anthropic(openai_request: dict[str, Any]) -> dict[str, Any]:
+def translate_openai_to_anthropic(
+    openai_request: dict[str, Any], max_tokens: int = 4096
+) -> dict[str, Any]:
     """Translate OpenAI chat completions request to Anthropic Messages format.
 
     Args:
         openai_request: OpenAI chat completions request format.
+        max_tokens: Default max_tokens to use if not provided in request.
 
     Returns:
         Anthropic Messages request format.
@@ -62,6 +65,10 @@ def translate_openai_to_anthropic(openai_request: dict[str, Any]) -> dict[str, A
     for param in ["model", "max_tokens", "temperature", "stream", "top_p", "stop"]:
         if param in openai_request:
             anthropic_request[param] = openai_request[param]
+
+    # Add default max_tokens if not provided
+    if "max_tokens" not in anthropic_request:
+        anthropic_request["max_tokens"] = max_tokens
 
     return anthropic_request
 

@@ -54,7 +54,7 @@ class AnthropicMessagesServer:
             return web.Response(status=400, text="Invalid JSON body")
 
         # Translate OpenAI format to Anthropic format
-        anthropic_body = translate_openai_to_anthropic(body)
+        anthropic_body = translate_openai_to_anthropic(body, max_tokens=self.config.max_tokens)
 
         stream = anthropic_body.get("stream", False)
         body_summary = {
