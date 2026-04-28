@@ -55,6 +55,7 @@ class SessionServer:
 
         try:
             body = await request.json()
+            logger.debug(f"Request body: {json.dumps(body, ensure_ascii=False, indent=2)}")
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse request body: {e}")
             return web.Response(status=400, text="Invalid JSON body")
@@ -103,6 +104,7 @@ class SessionServer:
 
         # Extract only the final message for channel (hide tool calls)
         channel_response = self._filter_for_channel(result)
+        logger.debug(f"Response body: {json.dumps(channel_response, ensure_ascii=False, indent=2)}")
 
         logger.info("Returning successful non-streaming response")
         return web.Response(

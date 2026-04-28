@@ -49,6 +49,7 @@ class AnthropicMessagesServer:
 
         try:
             body = await request.json()
+            logger.debug(f"Request body: {json.dumps(body, ensure_ascii=False, indent=2)}")
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse request body: {e}")
             return web.Response(status=400, text="Invalid JSON body")
@@ -100,6 +101,7 @@ class AnthropicMessagesServer:
             return web.Response(status=status_code, text=result["error"])
 
         logger.info("Returning successful non-streaming response")
+        logger.debug(f"Response body: {json.dumps(result, ensure_ascii=False, indent=2)}")
         return web.Response(status=200, body=json.dumps(result), content_type="application/json")
 
     async def _handle_streaming(

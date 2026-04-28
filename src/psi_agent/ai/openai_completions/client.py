@@ -67,6 +67,7 @@ class OpenAICompletionsClient:
             k: v if k != "messages" else f"[{len(v)} messages]" for k, v in request_body.items()
         }
         logger.debug(f"Request body summary: {body_summary}")
+        logger.debug(f"Request body: {json.dumps(request_body, ensure_ascii=False, indent=2)}")
 
         if stream:
             return self._stream_request(request_body)
@@ -88,6 +89,9 @@ class OpenAICompletionsClient:
             response: ChatCompletion = await self._client.chat.completions.create(**body)
             logger.info("Received successful non-streaming response")
             logger.debug(f"Response id: {response.id}")
+            logger.debug(
+                f"Response body: {json.dumps(response.model_dump(), ensure_ascii=False, indent=2)}"
+            )
             return response.model_dump()
 
         except Exception as e:
@@ -109,6 +113,7 @@ class OpenAICompletionsClient:
             logger.info("Starting streaming request")
             stream = await self._client.chat.completions.create(**body)
             async for chunk in stream:
+                logger.debug(f"Stream chunk: {chunk.model_dump_json()}")
                 yield f"data: {chunk.model_dump_json()}\n\n"
 
             logger.info("Streaming response completed")

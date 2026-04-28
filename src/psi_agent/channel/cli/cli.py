@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
 from dataclasses import dataclass
 
@@ -35,6 +36,7 @@ async def send_message(
             "messages": [{"role": "user", "content": message}],
             "stream": stream,
         }
+        logger.debug(f"Request body: {json.dumps(request_body, ensure_ascii=False, indent=2)}")
 
         try:
             async with client.post(
@@ -66,6 +68,7 @@ async def _handle_non_streaming(response: aiohttp.ClientResponse) -> str:
         Response content string.
     """
     result = await response.json()
+    logger.debug(f"Response body: {json.dumps(result, ensure_ascii=False, indent=2)}")
     choices = result.get("choices", [])
     if choices:
         message = choices[0].get("message", {})

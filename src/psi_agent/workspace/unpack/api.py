@@ -63,4 +63,6 @@ async def unpack(
         error_msg = stderr.decode() if stderr else "Unknown error"
         raise UnpackError(f"unsquashfs failed: {error_msg}")
 
+    logger.debug(f"unsquashfs output: {stderr.decode() if stderr else 'No output'}")
+
     logger.info(f"Successfully unpacked to {output_path}")
