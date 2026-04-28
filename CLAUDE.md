@@ -205,6 +205,152 @@ Task instructions here...
   - `ty check` — typing 检查
 - 质量检查：所有代码必须通过 format、lint、typing 和 test 才算完成
 
+### Import 顺序规范
+
+import 语句按以下顺序排列，每组内按字母排序：
+
+1. **stdlib**：Python 标准库模块
+2. **third-party**：第三方库（如 httpx, loguru）
+3. **local**：本项目内部模块
+
+示例：
+
+```python
+# stdlib
+import json
+from collections.abc import AsyncGenerator
+from typing import Any
+
+# third-party
+import httpx
+from loguru import logger
+
+# local
+from psi_agent.ai.openai_completions.config import OpenAICompletionsConfig
+```
+
+此规范符合 ruff isort（`I` 规则）。
+
+### 类型注解规范
+
+使用 Python 3.14+ 现代语法：
+
+- **可选类型**：使用 `X | None` 而非 `Optional[X]`
+- **联合类型**：使用 `X | Y` 而非 `Union[X, Y]`
+- **泛型**：使用 `list[X]`, `dict[K, V]` 而非 `List[X], Dict[K, V]`
+
+示例：
+
+```python
+# 正确 ✓
+def func(data: dict[str, Any] | None) -> list[str]:
+    ...
+
+# 错误 ✗
+from typing import Optional, List, Dict, Union
+
+def func(data: Optional[Dict[str, Any]]) -> List[str]:
+    ...
+```
+
+### 文档字符串规范
+
+使用 **Google style docstring** 格式。
+
+**函数文档字符串：**
+
+```python
+def function(arg1: str, arg2: int) -> bool:
+    """简短描述（一行）。
+
+    详细描述（可选，多行）。
+
+    Args:
+        arg1: 第一个参数的描述。
+        arg2: 第二个参数的描述。
+
+    Returns:
+        返回值的描述。
+
+    Raises:
+        ValueError: 可能抛出的异常描述。
+    """
+```
+
+**模块文档字符串：**
+
+```python
+"""模块简短描述。
+
+可选的详细描述。
+"""
+```
+
+**类文档字符串：**
+
+```python
+class MyClass:
+    """类简短描述。
+
+    详细描述（可选）。
+
+    Attributes:
+        attr1: 属性描述。
+    """
+```
+
+### Async 上下文管理器规范
+
+实现 `__aenter__` 和 `__aexit__` 时：
+
+- `__aenter__`：初始化资源，返回 self
+- `__aexit__`：关闭资源，将资源变量设为 `None`，记录日志
+
+示例：
+
+```python
+class MyClient:
+    def __init__(self) -> None:
+        self._client: httpx.AsyncClient | None = None
+
+    async def __aenter__(self) -> MyClient:
+        self._client = httpx.AsyncClient()
+        logger.debug("Initialized client")
+        return self
+
+    async def __aexit__(self, _exc_type: Any, _exc_val: Any, _exc_tb: Any) -> None:
+        if self._client is not None:
+            await self._client.aclose()
+            self._client = None
+            logger.debug("Closed client")
+```
+
+### 错误处理规范
+
+处理可能失败的异步操作（如网络请求）：
+
+- 使用 `try-except` 捕获异常
+- 使用 `loguru` 记录错误（ERROR 级别）
+- 返回包含 `error` 和 `status_code` 的 dict
+
+示例：
+
+```python
+async def request(url: str) -> dict[str, Any]:
+    try:
+        response = await self._client.post(url)
+        if response.status_code != 200:
+            logger.error(f"Request failed: {response.status_code}")
+            return {"error": response.text, "status_code": response.status_code}
+        return response.json()
+    except httpx.ConnectError as e:
+        logger.error(f"Connection failed: {e}")
+        return {"error": "Connection failed", "status_code": 500}
+    except httpx.TimeoutException as e:
+        logger.error(f"Request timeout: {e}")
+        return {"error": "Request timeout", "status_code": 500}
+```
+
 ### 日志规范
 
 - 使用 **loguru** 进行日志记录
@@ -265,19 +411,31 @@ def main() -> None:
   - `psi_agent.channel.*` — psi-channel-* 组件
   - `psi_agent.workspace.*` — psi-workspace-* 组件
 
-### 文档字符串
-
-使用统一格式（待定）。基本要求：
-- 描述函数作用
-- 说明每个参数的类型和含义
-- 说明返回值的类型和含义
-
 ### tool 函数规范
+
+workspace 中 tools 目录下的工具函数规范：
 
 - 入口函数名：`tool`
 - 使用类型注解定义参数类型
 - 使用默认值定义可选参数
-- 文档字符串描述函数、参数、返回值
+- 文档字符串描述函数、参数、返回值（Google style）
+
+示例：
+
+```python
+# tools/read.py
+
+def tool(file_path: str) -> str:
+    """Read file content.
+
+    Args:
+        file_path: Path to the file to read.
+
+    Returns:
+        File content as string.
+    """
+    ...
+```
 
 ## 开发工作流
 

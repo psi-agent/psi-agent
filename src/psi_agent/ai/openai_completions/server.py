@@ -122,7 +122,7 @@ class OpenAICompletionsServer:
         stream_result = await self.client.chat_completions(body, stream=True)
 
         # Type narrowing: streaming returns AsyncGenerator[str]
-        stream_gen = cast(AsyncGenerator[str, None], stream_result)
+        stream_gen = cast(AsyncGenerator[str], stream_result)
 
         async for chunk in stream_gen:
             await response.write(chunk.encode())

@@ -1,11 +1,11 @@
 [project]
 name = "psi-agent"
-version = "0.1.0"
+dynamic = ["version"]
 description = "A portable and componentized agent framework"
 readme = "CLAUDE.md"
 requires-python = ">=3.14"
-license = { text = "MIT" }
-authors = [{ name = "Hao Zhang" }]
+license = { file = "LICENSE.md" }
+authors = [{ name = "Hao Zhang", email = "hzhangxyz@outlook.com" }]
 dependencies = [
     "aiohttp>=3.9.0",
     "httpx>=0.27.0",
@@ -24,11 +24,14 @@ dev = [
 psi-ai-openai-completions = "psi_agent.ai.openai_completions.cli:main"
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/psi_agent"]
+
+[tool.hatch.version]
+source = "vcs"
 
 [tool.ruff]
 line-length = 100
