@@ -604,10 +604,12 @@ psi-agent 提供两种 CLI 接口：
 1. **子命令接口（推荐）**：`psi-agent <组件> <子命令>`
 2. **独立命令**：`psi-<组件>-<子命令>`
 
+> **开发时运行方式**：在开发过程中，使用 `uv run psi-agent ...` 来运行命令。安装后可直接使用 `psi-agent ...`。
+
 启动 session：
 
 ```bash
-psi-agent session \
+uv run psi-agent session \
   --workspace ./workspace \
   --channel-socket ./channel.sock \
   --ai-socket ./ai.sock
@@ -616,7 +618,7 @@ psi-agent session \
 启动 AI 组件（OpenRouter 示例）：
 
 ```bash
-psi-agent ai openai-completions \
+uv run psi-agent ai openai-completions \
   --session-socket ./ai.sock \
   --model tencent/hy3-preview:free \
   --api-key sk-or-v1-xxxxxx \
@@ -626,6 +628,6 @@ psi-agent ai openai-completions \
 启动 channel（REPL 示例）：
 
 ```bash
-psi-agent channel repl \
+uv run psi-agent channel repl \
   --session-socket ./channel.sock
 ```
