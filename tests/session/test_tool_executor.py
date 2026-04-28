@@ -1,5 +1,7 @@
 """Tests for tool_executor module."""
 
+from __future__ import annotations
+
 import pytest
 
 from psi_agent.session.tool_executor import execute_tool, execute_tools_parallel

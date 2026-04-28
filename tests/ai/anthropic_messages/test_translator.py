@@ -1,5 +1,7 @@
 """Tests for protocol translation between OpenAI and Anthropic formats."""
 
+from __future__ import annotations
+
 from psi_agent.ai.anthropic_messages.translator import (
     translate_anthropic_to_openai,
     translate_openai_to_anthropic,

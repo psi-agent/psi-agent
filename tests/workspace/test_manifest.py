@@ -1,5 +1,7 @@
 """Tests for manifest data structure."""
 
+from __future__ import annotations
+
 from uuid import uuid4
 
 import pytest

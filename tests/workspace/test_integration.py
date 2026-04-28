@@ -4,6 +4,8 @@ Note: These tests require root privileges for mount operations.
 Run with: sudo uv run pytest tests/workspace/test_integration.py -v
 """
 
+from __future__ import annotations
+
 import os
 from pathlib import Path
 

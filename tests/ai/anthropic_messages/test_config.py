@@ -1,5 +1,7 @@
 """Tests for Anthropic Messages config."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 from psi_agent.ai.anthropic_messages.config import AnthropicMessagesConfig

@@ -1,5 +1,7 @@
 """Tests for message splitting logic."""
 
+from __future__ import annotations
+
 from psi_agent.channel.telegram.bot import split_message
 
 

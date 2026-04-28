@@ -1,5 +1,7 @@
 """Tests for OpenAI completions client."""
 
+from __future__ import annotations
+
 from collections.abc import AsyncGenerator
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch

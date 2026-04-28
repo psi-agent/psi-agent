@@ -1,5 +1,7 @@
 """Tests for OpenAI completions configuration."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 from psi_agent.ai.openai_completions.config import OpenAICompletionsConfig

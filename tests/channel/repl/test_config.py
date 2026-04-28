@@ -1,5 +1,7 @@
 """Tests for REPL channel config."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 from psi_agent.channel.repl.config import ReplConfig
