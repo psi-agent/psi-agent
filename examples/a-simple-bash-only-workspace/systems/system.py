@@ -11,7 +11,7 @@ import anyio
 CompleteFn = Callable[[list[dict[str, Any]]], Awaitable[str]]
 
 
-async def _parse_skill_description(skill_md_path: Path | anyio.Path) -> str | None:
+async def _parse_skill_description(skill_md_path: anyio.Path) -> str | None:
     """Parse SKILL.md to extract description from YAML frontmatter.
 
     Args:
@@ -20,7 +20,7 @@ async def _parse_skill_description(skill_md_path: Path | anyio.Path) -> str | No
     Returns:
         Description string if found, None otherwise.
     """
-    content = await anyio.Path(skill_md_path).read_text()
+    content = await skill_md_path.read_text()
 
     # Match YAML frontmatter between --- markers
     frontmatter_match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
@@ -97,11 +97,12 @@ class System:
                         if description:
                             skill_descriptions.append(f"- {skill_path.name}: {description}")
 
+        workspace_resolved = await anyio.Path(self._workspace_dir).resolve()
         system_prompt = f"""You are a helpful assistant with access to tools and skills.
 
 ## Workspace
 
-Your workspace directory is: {self._workspace_dir.resolve()}
+Your workspace directory is: {workspace_resolved}
 
 ## Available Skills
 

@@ -154,7 +154,7 @@ def _strip_frontmatter(content: str) -> str:
     return trimmed
 
 
-async def _read_bootstrap_file(file_path: Path) -> str | None:
+async def _read_bootstrap_file(file_path: anyio.Path | Path) -> str | None:
     """Read a bootstrap file asynchronously.
 
     Args:
@@ -271,15 +271,16 @@ def _build_safety_section() -> str:
     return "\n".join(lines)
 
 
-def _build_workspace_section(workspace_dir: Path) -> str:
+async def _build_workspace_section(workspace_dir: Path) -> str:
     """Build the Workspace section.
 
     Args:
         workspace_dir: Path to the workspace directory.
     """
+    resolved_dir = await anyio.Path(workspace_dir).resolve()
     lines = [
         "## Workspace",
-        f"Your working directory is: {workspace_dir.resolve()}",
+        f"Your working directory is: {resolved_dir}",
         (
             "Treat this directory as the single global workspace for file operations "
             "unless explicitly instructed otherwise."
@@ -349,11 +350,11 @@ async def _build_skills_section(workspace: Path) -> str:
     skills_dir = workspace / "skills"
     skill_descriptions: list[str] = []
 
-    if skills_dir.exists():
-        for skill_path in skills_dir.iterdir():
-            if skill_path.is_dir():
+    if await anyio.Path(skills_dir).exists():
+        async for skill_path in anyio.Path(skills_dir).iterdir():
+            if await anyio.Path(skill_path).is_dir():
                 skill_md = skill_path / "SKILL.md"
-                if skill_md.exists():
+                if await anyio.Path(skill_md).exists():
                     content = await _read_bootstrap_file(skill_md)
                     if content:
                         # Extract first line as description
@@ -678,7 +679,7 @@ class System:
             "",
             _build_safety_section(),
             "",
-            _build_workspace_section(self._workspace_dir),
+            await _build_workspace_section(self._workspace_dir),
             "",
             await _build_skills_section(self._workspace_dir),
             "",
