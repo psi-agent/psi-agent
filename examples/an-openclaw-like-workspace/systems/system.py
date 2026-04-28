@@ -163,7 +163,7 @@ async def _read_bootstrap_file(file_path: Path) -> str | None:
     Returns:
         File content with frontmatter stripped, or None if file doesn't exist.
     """
-    if not file_path.exists():
+    if not await anyio.Path(file_path).exists():
         return None
     try:
         async with await anyio.open_file(file_path, encoding="utf-8") as f:
