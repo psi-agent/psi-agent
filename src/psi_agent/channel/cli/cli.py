@@ -87,6 +87,8 @@ async def _handle_streaming(response: aiohttp.ClientResponse) -> str:
     """
     import json
 
+    from loguru import logger
+
     content_parts = []
 
     async for line in response.content:
@@ -100,6 +102,9 @@ async def _handle_streaming(response: aiohttp.ClientResponse) -> str:
                 if "content" in delta:
                     content = delta["content"]
                     content_parts.append(content)
+                    truncated = content[:100]
+                    suffix = "..." if len(content) > 100 else ""
+                    logger.debug(f"Stream chunk: {truncated}{suffix}")
                     # Print chunk immediately for streaming
                     print(content, end="", flush=True)
             except json.JSONDecodeError:
