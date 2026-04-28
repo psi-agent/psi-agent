@@ -1,9 +1,8 @@
 """REPL interface for interactive conversation."""
 
-import asyncio
-import sys
-
 from loguru import logger
+from prompt_toolkit import PromptSession
+from prompt_toolkit.history import InMemoryHistory
 
 from psi_agent.channel.repl.client import ReplClient
 from psi_agent.channel.repl.config import ReplConfig
@@ -21,16 +20,21 @@ class Repl:
         self.config = config
         self.client = ReplClient(config)
         self.history: list[dict[str, str]] = []
+        self._session: PromptSession[None] | None = None
 
     async def run(self) -> None:
         """Run the REPL loop."""
         print("psi-channel-repl - Interactive conversation with psi-session")
-        print("Type /quit or press Ctrl+D to exit\n")
+        print("Type /quit or press Ctrl+D to exit")
+        print("Press Alt+Enter or Escape+Enter for new line\n")
+
+        # Initialize prompt-toolkit session with history
+        self._session = PromptSession(history=InMemoryHistory())
 
         async with self.client:
             while True:
                 try:
-                    # Read user input
+                    # Read user input using prompt-toolkit async API
                     user_input = await self._read_input()
                     if user_input is None:
                         # EOF (Ctrl+D)
@@ -66,19 +70,18 @@ class Repl:
                     print(f"\nError: {e}\n")
 
     async def _read_input(self) -> str | None:
-        """Read input from stdin asynchronously.
+        """Read input from stdin asynchronously using prompt-toolkit.
 
         Returns:
             The input string, or None on EOF.
         """
-        loop = asyncio.get_event_loop()
+        if self._session is None:
+            return None
 
         try:
-            # Use asyncio to read from stdin without blocking
-            line = await loop.run_in_executor(None, sys.stdin.readline)
-            if not line:
-                # EOF
-                return None
-            return line.rstrip("\n")
+            # Use prompt-toolkit's async prompt with multiline support
+            # Enter submits, Alt+Enter or Escape+Enter inserts newline
+            result = await self._session.prompt_async("> ", multiline=True)
+            return result
         except EOFError:
             return None
