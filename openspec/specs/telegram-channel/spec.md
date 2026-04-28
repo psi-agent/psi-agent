@@ -132,3 +132,12 @@ The Telegram channel SHALL be available as a subcommand under `psi-agent channel
 #### Scenario: Help at channel level
 - **WHEN** user runs `psi-agent channel --help`
 - **THEN** the help text SHALL show `telegram` as an available subcommand
+
+### Requirement: CLI masks sensitive token from process title
+
+The Telegram channel CLI SHALL mask the `--token` argument from the process title immediately after parsing.
+
+#### Scenario: Token masked in process title
+- **WHEN** `psi-channel-telegram` is started with `--token 123456:ABC`
+- **THEN** the process title SHALL NOT contain the token value
+- **AND** the process title SHALL show `--token ***`

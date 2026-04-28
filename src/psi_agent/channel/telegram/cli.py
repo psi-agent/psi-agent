@@ -10,6 +10,7 @@ from loguru import logger
 
 from psi_agent.channel.telegram.bot import TelegramBot
 from psi_agent.channel.telegram.config import TelegramConfig
+from psi_agent.utils.proctitle import mask_sensitive_args
 
 
 @dataclass
@@ -20,6 +21,9 @@ class Telegram:
     session_socket: str
 
     def __call__(self) -> None:
+        # Mask sensitive arguments from process title
+        mask_sensitive_args(["token"])
+
         logger.info("Starting psi-channel-telegram")
         logger.debug(f"Config: session_socket={self.session_socket}")
 

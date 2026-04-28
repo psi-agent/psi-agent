@@ -100,3 +100,12 @@ CLAUDE.md SHALL 规定使用 Google style docstring 格式。
 #### Scenario: 编写模块文档字符串
 - **WHEN** 编写模块级文档字符串
 - **THEN** SHALL 使用单行或简短描述，说明模块用途
+
+### Requirement: Sensitive argument masking principle
+
+CLAUDE.md SHALL document the security principle that all CLI entry points accepting sensitive credentials (API keys, tokens, passwords) MUST mask them from the process title.
+
+#### Scenario: New CLI with sensitive arguments
+- **WHEN** a new CLI entry point is created that accepts sensitive credentials
+- **THEN** the CLI SHALL call the masking utility immediately after argument parsing
+- **AND** this requirement SHALL be documented in CLAUDE.md coding principles
