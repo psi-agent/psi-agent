@@ -5,11 +5,13 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
+import anyio
+
 # Type aliases
 CompleteFn = Callable[[list[dict[str, Any]]], Awaitable[str]]
 
 
-async def _parse_skill_description(skill_md_path: Path) -> str | None:
+async def _parse_skill_description(skill_md_path: Path | anyio.Path) -> str | None:
     """Parse SKILL.md to extract description from YAML frontmatter.
 
     Args:
@@ -18,7 +20,7 @@ async def _parse_skill_description(skill_md_path: Path) -> str | None:
     Returns:
         Description string if found, None otherwise.
     """
-    content = skill_md_path.read_text()
+    content = await anyio.Path(skill_md_path).read_text()
 
     # Match YAML frontmatter between --- markers
     frontmatter_match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
@@ -86,11 +88,11 @@ class System:
         skills_dir = self._workspace_dir / "skills"
         skill_descriptions: list[str] = []
 
-        if skills_dir.exists():
-            for skill_path in skills_dir.iterdir():
-                if skill_path.is_dir():
+        if await anyio.Path(skills_dir).exists():
+            async for skill_path in anyio.Path(skills_dir).iterdir():
+                if await anyio.Path(skill_path).is_dir():
                     skill_md = skill_path / "SKILL.md"
-                    if skill_md.exists():
+                    if await anyio.Path(skill_md).exists():
                         description = await _parse_skill_description(skill_md)
                         if description:
                             skill_descriptions.append(f"- {skill_path.name}: {description}")
