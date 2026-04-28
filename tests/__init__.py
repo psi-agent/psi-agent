@@ -1,1 +1,3 @@
-"""Tests for psi_agent.ai.openai_completions."""
+"""Tests for psi-agent."""
+
+from __future__ import annotations

@@ -1,5 +1,7 @@
 """Tests for TelegramConfig."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 from psi_agent.channel.telegram.config import TelegramConfig

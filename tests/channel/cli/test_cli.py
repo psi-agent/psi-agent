@@ -1,5 +1,7 @@
 """Tests for channel CLI module."""
 
+from __future__ import annotations
+
 import pytest
 
 from psi_agent.channel.cli.cli import send_message

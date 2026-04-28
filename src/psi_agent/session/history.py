@@ -12,7 +12,7 @@ from loguru import logger
 from psi_agent.session.types import History
 
 
-async def load_history_from_file(history_file: Path) -> list[dict[str, Any]]:
+async def load_history_from_file(history_file: Path | anyio.Path) -> list[dict[str, Any]]:
     """Load history from JSON file.
 
     Args:
@@ -38,7 +38,7 @@ async def load_history_from_file(history_file: Path) -> list[dict[str, Any]]:
         return []
 
 
-async def save_history_to_file(history: History, history_file: Path) -> None:
+async def save_history_to_file(history: History, history_file: Path | anyio.Path) -> None:
     """Save history to JSON file.
 
     Args:
@@ -66,7 +66,7 @@ async def initialize_history(history_file: str | None) -> History:
         logger.debug("No history file specified, using memory-only history")
         return History(messages=[], history_file=None)
 
-    history_path = Path(history_file)
+    history_path = anyio.Path(history_file)
     messages = await load_history_from_file(history_path)
     return History(messages=messages, history_file=history_file)
 
@@ -80,5 +80,5 @@ async def persist_history(history: History) -> None:
     if history.history_file is None:
         return
 
-    history_path = Path(history.history_file)
+    history_path = anyio.Path(history.history_file)
     await save_history_to_file(history, history_path)

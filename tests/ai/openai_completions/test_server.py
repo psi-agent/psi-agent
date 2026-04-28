@@ -1,5 +1,7 @@
 """Tests for OpenAI completions server."""
 
+from __future__ import annotations
+
 import pytest
 
 from psi_agent.ai.openai_completions.config import OpenAICompletionsConfig

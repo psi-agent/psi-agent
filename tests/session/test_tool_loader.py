@@ -1,5 +1,7 @@
 """Tests for tool_loader module."""
 
+from __future__ import annotations
+
 import tempfile
 from pathlib import Path
 

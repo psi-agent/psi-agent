@@ -70,7 +70,11 @@ async def snapshot(
     upper_dir = Path(mount_info["upper_dir"])
 
     # Check if there are any changes
-    if not any(upper_dir.iterdir()):
+    has_changes = False
+    async for _ in anyio.Path(upper_dir).iterdir():
+        has_changes = True
+        break
+    if not has_changes:
         logger.warning("No changes detected in upper directory")
 
     # Read current manifest from squashfs
