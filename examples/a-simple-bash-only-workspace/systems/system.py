@@ -1,7 +1,12 @@
 """Async system configuration for the workspace."""
 
 import re
+from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import Any
+
+# Type aliases
+CompleteFn = Callable[[list[dict[str, Any]]], Awaitable[str]]
 
 
 async def build_system_prompt() -> str:
@@ -84,35 +89,69 @@ async def _parse_skill_description(skill_md_path: Path) -> str | None:
     return None
 
 
-async def compact_history(
-    history: list[dict[str, str]], max_tokens: int = 4000
-) -> list[dict[str, str]]:
-    """Compact conversation history using LLM summarization.
+def _estimate_tokens(message: dict[str, Any]) -> int:
+    """Estimate token count for a message using chars/4 heuristic.
 
-    This function compresses long conversation histories by summarizing
-    older messages while preserving recent context.
+    This is a conservative estimate (overestimates tokens).
+
+    Args:
+        message: A conversation message with role and content.
+
+    Returns:
+        Estimated token count.
+    """
+    chars = 0
+    content = message.get("content", "")
+
+    if isinstance(content, str):
+        chars = len(content)
+    elif isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict):
+                if block.get("type") == "text":
+                    chars += len(block.get("text", ""))
+                elif block.get("type") == "image":
+                    chars += 4800  # Estimate images as 1200 tokens
+
+    return max(1, chars // 4)
+
+
+async def compact_history(
+    history: list[dict[str, Any]],
+    complete_fn: CompleteFn,
+    max_tokens: int = 4000,
+) -> list[dict[str, Any]]:
+    """Compact conversation history by keeping recent messages.
+
+    This simple implementation ignores the complete_fn parameter and uses
+    simple truncation. It accepts complete_fn for interface compatibility
+    with other workspaces.
 
     Args:
         history: List of conversation messages with role and content.
+        complete_fn: Async function for single-turn LLM conversation.
+            Ignored in this simple implementation.
         max_tokens: Maximum tokens to keep in history.
 
     Returns:
-        Compacted history list.
-
-    Note:
-        This is a framework implementation. The actual LLM summarization
-        logic should be implemented based on the specific agent's needs.
+        Compacted history list with recent messages only.
     """
-    # Framework implementation - placeholder for LLM summarization
-    # In production, this would:
-    # 1. Count tokens in history
-    # 2. If over limit, summarize older messages via LLM API (async)
-    # 3. Return compacted history with summary + recent messages
+    _ = complete_fn  # Ignored: simple workspace uses truncation, not LLM summarization
 
-    # Simple implementation: keep last N messages
-    # (This should be replaced with proper LLM summarization)
-    max_messages = 20  # Approximate message limit
-    if len(history) > max_messages:
-        return history[-max_messages:]
+    # Calculate total tokens in history
+    total_tokens = sum(_estimate_tokens(msg) for msg in history)
 
-    return history
+    if total_tokens <= max_tokens:
+        return history
+
+    # Walk backwards to find cut point
+    accumulated = 0
+    cut_index = len(history)
+
+    for i in range(len(history) - 1, -1, -1):
+        accumulated += _estimate_tokens(history[i])
+        if accumulated >= max_tokens:
+            cut_index = i
+            break
+
+    return history[cut_index:]

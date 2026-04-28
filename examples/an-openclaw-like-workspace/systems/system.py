@@ -3,15 +3,72 @@
 import os
 import platform
 import sys
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import anyio
 
+# Type aliases
+CompleteFn = Callable[[list[dict[str, Any]]], Awaitable[str]]
+
 # Constants
 SILENT_TOKEN = "SILENT_TOKEN"
 CACHE_BOUNDARY = "\n<!-- OPENCLAW_CACHE_BOUNDARY -->\n"
+
+_SUMMARIZATION_SYSTEM_PROMPT = """You are summarizing a conversation for context preservation."""
+
+_HISTORY_SUMMARY_PROMPT = """The messages above are a conversation to summarize. \
+Create a structured context checkpoint summary that another LLM will use to continue the work.
+
+Use this EXACT format:
+
+## Goal
+[What is the user trying to accomplish? Can be multiple items if the session \
+covers different tasks.]
+
+## Constraints & Preferences
+- [Any constraints, preferences, or requirements mentioned by user]
+- [Or "(none)" if none were mentioned]
+
+## Progress
+### Done
+- [x] [Completed tasks/changes]
+
+### In Progress
+- [ ] [Current work]
+
+### Blocked
+- [Issues preventing progress, if any]
+
+## Key Decisions
+- **[Decision]**: [Brief rationale]
+
+## Next Steps
+1. [Ordered list of what should happen next]
+
+## Critical Context
+- [Any data, examples, or references needed to continue]
+- [Or "(none)" if not applicable]
+
+Keep each section concise. Preserve exact file paths, function names, and error messages."""
+
+_TURN_PREFIX_SUMMARY_PROMPT = """This is the PREFIX of a turn that was too large to keep. \
+The SUFFIX (recent work) is retained.
+
+Summarize the prefix to provide context for the retained suffix:
+
+## Original Request
+[What did the user ask for in this turn?]
+
+## Early Progress
+- [Key decisions and work done in the prefix]
+
+## Context for Suffix
+- [Information needed to understand the retained recent work]
+
+Be concise. Focus on what's needed to understand the kept suffix."""
 
 
 def _strip_frontmatter(content: str) -> str:
@@ -418,24 +475,192 @@ async def build_system_prompt(
     return prompt
 
 
-async def compact_history(
-    history: list[dict[str, Any]], max_tokens: int = 4000
-) -> list[dict[str, Any]]:
-    """Compact conversation history by keeping recent messages.
+def _estimate_tokens(message: dict[str, Any]) -> int:
+    """Estimate token count for a message using chars/4 heuristic.
 
-    This is a simple implementation that keeps the last N messages.
-    In production, this could use LLM summarization for better context preservation.
+    This is a conservative estimate (overestimates tokens).
+
+    Args:
+        message: A conversation message with role and content.
+
+    Returns:
+        Estimated token count.
+    """
+    chars = 0
+    content = message.get("content", "")
+
+    if isinstance(content, str):
+        chars = len(content)
+    elif isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict):
+                if block.get("type") == "text":
+                    chars += len(block.get("text", ""))
+                elif block.get("type") == "image":
+                    chars += 4800  # Estimate images as 1200 tokens
+
+    return max(1, chars // 4)
+
+
+def _find_turn_start(history: list[dict[str, Any]], cut_index: int) -> int:
+    """Find the user message that starts the turn containing cut_index.
+
+    Args:
+        history: List of conversation messages.
+        cut_index: The index where the cut point is.
+
+    Returns:
+        Index of the user message that starts the turn, or 0 if not found.
+    """
+    for i in range(cut_index, -1, -1):
+        if history[i].get("role") == "user":
+            return i
+    return 0
+
+
+def _find_cut_point(
+    history: list[dict[str, Any]],
+    keep_recent_tokens: int,
+) -> tuple[int, bool]:
+    """Find the cut point in history.
+
+    Walks backwards from newest messages, accumulating estimated token sizes.
+    Stops when accumulated tokens >= keep_recent_tokens.
+
+    Args:
+        history: List of conversation messages.
+        keep_recent_tokens: Number of recent tokens to keep.
+
+    Returns:
+        A tuple of (cut_index, is_split_turn):
+        - cut_index: Index of first message to keep.
+        - is_split_turn: True if cut point is at an assistant message.
+    """
+    accumulated = 0
+    cut_index = len(history)
+
+    for i in range(len(history) - 1, -1, -1):
+        accumulated += _estimate_tokens(history[i])
+        if accumulated >= keep_recent_tokens:
+            cut_index = i
+            break
+
+    # Determine if this is a split turn (cut at assistant message)
+    is_split_turn = (
+        cut_index > 0 and cut_index < len(history) and history[cut_index].get("role") == "assistant"
+    )
+
+    return cut_index, is_split_turn
+
+
+def _build_summarization_prompt(messages: list[dict[str, Any]]) -> str:
+    """Build the summarization prompt from a list of messages.
+
+    Args:
+        messages: List of conversation messages to summarize.
+
+    Returns:
+        A formatted prompt string for the summarization LLM call.
+    """
+    lines = ["<conversation>"]
+    for msg in messages:
+        role = msg.get("role", "unknown")
+        content = msg.get("content", "")
+        if isinstance(content, list):
+            content = " ".join(
+                block.get("text", "") for block in content if isinstance(block, dict)
+            )
+        lines.append(f"[{role}]: {content}")
+    lines.append("</conversation>")
+    return "\n".join(lines)
+
+
+async def compact_history(
+    history: list[dict[str, Any]],
+    complete_fn: CompleteFn,
+    max_tokens: int = 4000,
+    keep_recent_tokens: int | None = None,
+) -> list[dict[str, Any]]:
+    """Compact conversation history using LLM summarization.
+
+    Implements OpenClaw's compaction algorithm:
+    1. Calculate total tokens in history
+    2. If under max_tokens, return unchanged
+    3. Find cut point by walking backwards, accumulating tokens
+    4. Handle split turn (cut at assistant message) if needed
+    5. Generate summaries for old messages
 
     Args:
         history: List of conversation messages with role and content.
-        max_tokens: Maximum tokens to keep in history (approximate).
+        complete_fn: Async function that takes a list of messages (single turn)
+            and returns the LLM response string.
+        max_tokens: Maximum tokens to keep in history.
+        keep_recent_tokens: Number of recent tokens to preserve unchanged.
+            Defaults to half of max_tokens.
 
     Returns:
-        Compacted history list with recent messages.
+        Compacted history list with summary message(s) and recent messages.
     """
-    # Simple implementation: keep last N messages
-    # Approximate 4 tokens per message on average
-    max_messages = max(20, max_tokens // 4)
-    if len(history) > max_messages:
-        return history[-max_messages:]
-    return history
+    if keep_recent_tokens is None:
+        keep_recent_tokens = max_tokens // 2
+
+    # Calculate total tokens in history
+    total_tokens = sum(_estimate_tokens(msg) for msg in history)
+
+    if total_tokens <= max_tokens:
+        return history
+
+    # Find cut point
+    cut_index, is_split_turn = _find_cut_point(history, keep_recent_tokens)
+
+    if cut_index <= 0:
+        # Everything gets summarized
+        messages_to_summarize = history
+        turn_prefix_messages = []
+        recent_messages = []
+    else:
+        # Determine history end for summarization
+        if is_split_turn:
+            turn_start_index = _find_turn_start(history, cut_index)
+            messages_to_summarize = history[:turn_start_index]
+            turn_prefix_messages = history[turn_start_index:cut_index]
+            recent_messages = history[cut_index:]
+        else:
+            messages_to_summarize = history[:cut_index]
+            turn_prefix_messages = []
+            recent_messages = history[cut_index:]
+
+    # Generate history summary
+    summary_parts: list[str] = []
+
+    if messages_to_summarize:
+        prompt = _build_summarization_prompt(messages_to_summarize)
+        history_summary = await complete_fn(
+            [
+                {"role": "system", "content": _SUMMARIZATION_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt + "\n\n" + _HISTORY_SUMMARY_PROMPT},
+            ]
+        )
+        summary_parts.append(history_summary)
+
+    # Generate turn prefix summary if split turn
+    if is_split_turn and turn_prefix_messages:
+        prompt = _build_summarization_prompt(turn_prefix_messages)
+        turn_prefix_summary = await complete_fn(
+            [
+                {"role": "system", "content": _SUMMARIZATION_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt + "\n\n" + _TURN_PREFIX_SUMMARY_PROMPT},
+            ]
+        )
+        summary_parts.append(f"\n\n---\n\n**Turn Context (split turn):**\n\n{turn_prefix_summary}")
+
+    # Build result
+    if summary_parts:
+        combined_summary = "".join(summary_parts)
+        summary_message = {
+            "role": "assistant",
+            "content": f"[Conversation Summary]\n{combined_summary}",
+        }
+        return [summary_message] + recent_messages
+
+    return recent_messages
