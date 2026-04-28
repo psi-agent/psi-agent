@@ -88,6 +88,7 @@ async def _copy_directory(src: Path, dst: Path) -> None:
     """
     async for item in anyio.Path(src).iterdir():
         dest_item = dst / item.name
+        logger.debug(f"Copying: {item} -> {dest_item}")
         if await anyio.Path(item).is_dir():
             await anyio.Path(dest_item).mkdir()
             await _copy_directory(Path(item), dest_item)
@@ -126,3 +127,5 @@ async def _create_squashfs(src_dir: Path, output_file: Path) -> None:
     if process.returncode != 0:
         error_msg = stderr.decode() if stderr else "Unknown error"
         raise PackError(f"mksquashfs failed: {error_msg}")
+
+    logger.debug(f"mksquashfs output: {stderr.decode() if stderr else 'No output'}")

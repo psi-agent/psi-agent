@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import aiohttp
@@ -65,6 +66,7 @@ class TelegramClient:
             "user": user_id,
             "stream": False,
         }
+        logger.debug(f"Request body: {json.dumps(body, ensure_ascii=False, indent=2)}")
 
         logger.debug(f"Sending message to session for user {user_id}")
 
@@ -76,6 +78,7 @@ class TelegramClient:
                     return f"Error: Session returned status {response.status}"
 
                 result = await response.json()
+                logger.debug(f"Response body: {json.dumps(result, ensure_ascii=False, indent=2)}")
                 choices = result.get("choices", [])
                 if not choices:
                     logger.warning("Session returned no choices")

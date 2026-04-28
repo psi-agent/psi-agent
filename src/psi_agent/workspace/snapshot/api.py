@@ -181,6 +181,8 @@ async def _extract_squashfs(squashfs_file: Path, output_dir: Path) -> None:
         error_msg = stderr.decode() if stderr else "Unknown error"
         raise SnapshotError(f"Failed to extract squashfs: {error_msg}")
 
+    logger.debug(f"unsquashfs output: {stderr.decode() if stderr else 'No output'}")
+
 
 async def _copy_directory(src: Path, dst: Path) -> None:
     """Copy directory contents.
@@ -223,3 +225,5 @@ async def _create_squashfs(src_dir: Path, output_file: Path) -> None:
     if process.returncode != 0:
         error_msg = stderr.decode() if stderr else "Unknown error"
         raise SnapshotError(f"Failed to create squashfs: {error_msg}")
+
+    logger.debug(f"mksquashfs output: {stderr.decode() if stderr else 'No output'}")

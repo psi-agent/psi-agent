@@ -324,6 +324,9 @@ class SessionRunner:
                 "messages": current_messages,
                 "tools": self.registry.list_tools(),
             }
+            logger.debug(
+                f"AI request body: {json.dumps(request_body, ensure_ascii=False, indent=2)}"
+            )
 
             # Call psi-ai
             async with self.client.post(
@@ -336,6 +339,9 @@ class SessionRunner:
                     return self._make_error_response(f"AI request failed: {text}")
 
                 result = await response.json()
+                logger.debug(
+                    f"AI response body: {json.dumps(result, ensure_ascii=False, indent=2)}"
+                )
 
             # Check for tool calls
             choice = result.get("choices", [{}])[0]
@@ -459,6 +465,7 @@ class SessionRunner:
 
                             if "content" in delta:
                                 content_chunks.append(delta["content"])
+                                logger.debug(f"Stream content chunk: {delta['content'][:100]}...")
 
                             if "tool_calls" in delta:
                                 tool_calls_data.extend(delta["tool_calls"])

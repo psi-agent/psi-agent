@@ -37,9 +37,14 @@ async def execute_tool(
 
         # Format result for LLM
         if isinstance(result, str):
-            return result
+            formatted_result = result
         else:
-            return json.dumps(result, ensure_ascii=False)
+            formatted_result = json.dumps(result, ensure_ascii=False)
+
+        logger.debug(
+            f"Tool result: {formatted_result[:500]}{'...' if len(formatted_result) > 500 else ''}"
+        )
+        return formatted_result
 
     except Exception as e:
         logger.error(f"Tool execution failed: {tool_name}: {e}")

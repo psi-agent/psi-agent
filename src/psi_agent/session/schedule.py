@@ -233,6 +233,9 @@ class ScheduleExecutor:
             schedule: The schedule to execute.
         """
         try:
+            logger.debug(
+                f"Executing schedule '{schedule.name}' with content: {schedule.content[:200]}..."
+            )
             user_message = {"role": "user", "content": schedule.content}
             await self.runner.process_request(user_message)
             logger.info(f"Completed scheduled task: {schedule.name}")

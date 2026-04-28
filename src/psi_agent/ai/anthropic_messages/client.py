@@ -71,6 +71,7 @@ class AnthropicMessagesClient:
             k: v if k != "messages" else f"[{len(v)} messages]" for k, v in request_body.items()
         }
         logger.debug(f"Request body summary: {body_summary}")
+        logger.debug(f"Request body: {json.dumps(request_body, ensure_ascii=False, indent=2)}")
 
         if stream:
             return self._stream_request(request_body)
@@ -92,6 +93,9 @@ class AnthropicMessagesClient:
             response: Message = await self._client.messages.create(**body)
             logger.info("Received successful non-streaming response")
             logger.debug(f"Response id: {response.id}")
+            logger.debug(
+                f"Response body: {json.dumps(response.model_dump(), ensure_ascii=False, indent=2)}"
+            )
 
             # Convert Anthropic response to OpenAI format
             anthropic_dict = response.model_dump()
@@ -122,6 +126,8 @@ class AnthropicMessagesClient:
                 async with client.messages.stream(**body) as stream:
                     async for event in stream:
                         event_data = event.model_dump()
+                        event_json = json.dumps(event_data, ensure_ascii=False)
+                        logger.debug(f"Stream event: {event.type} - {event_json}")
                         yield f"event: {event.type}\ndata: {json.dumps(event_data)}\n\n"
 
                 yield "event: message_stop\ndata: {}\n\n"

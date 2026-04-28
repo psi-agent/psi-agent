@@ -172,6 +172,8 @@ async def _mount_squashfs(squashfs_file: Path, mount_point: Path) -> None:
         error_msg = stderr.decode() if stderr else "Unknown error"
         raise MountError(f"Failed to mount squashfs: {error_msg}")
 
+    logger.debug(f"mount squashfs output: {stderr.decode() if stderr else 'No output'}")
+
 
 async def _mount_overlayfs(
     mount_point: Path,
@@ -215,3 +217,5 @@ async def _mount_overlayfs(
     if process.returncode != 0:
         error_msg = stderr.decode() if stderr else "Unknown error"
         raise MountError(f"Failed to mount overlayfs: {error_msg}")
+
+    logger.debug(f"mount overlayfs output: {stderr.decode() if stderr else 'No output'}")

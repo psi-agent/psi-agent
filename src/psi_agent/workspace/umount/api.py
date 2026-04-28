@@ -96,6 +96,8 @@ async def _unmount(mount_point: Path) -> None:
         error_msg = stderr.decode() if stderr else "Unknown error"
         raise UmountError(f"Failed to unmount {mount_point}: {error_msg}")
 
+    logger.debug(f"umount output: {stderr.decode() if stderr else 'No output'}")
+
 
 async def _cleanup_directory(dir_path: Path) -> None:
     """Remove a directory and its contents.
