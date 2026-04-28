@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from loguru import logger
@@ -63,6 +64,7 @@ class TelegramBot:
         self.config = config
         self.client = TelegramClient(config)
         self._app: Application[Any, Any, Any, Any, Any, Any] | None = None
+        self._stop_event = asyncio.Event()
 
     async def start(self) -> None:
         """Start the Telegram bot."""
@@ -77,11 +79,13 @@ class TelegramBot:
         async with self.client:
             await self._app.initialize()
             await self._app.start()
-            await self._app.updater.start_polling()  # ty: ignore
+            assert self._app is not None
+            assert self._app.updater is not None
+            await self._app.updater.start_polling()
 
             # Keep running until stopped
             try:
-                await self._app.updater.running_event.wait()  # ty: ignore
+                await self._stop_event.wait()
             finally:
                 await self._stop()
 
@@ -89,7 +93,8 @@ class TelegramBot:
         """Stop the bot gracefully."""
         if self._app is not None:
             logger.info("Stopping Telegram bot")
-            await self._app.updater.stop()  # ty: ignore
+            if self._app.updater is not None:
+                await self._app.updater.stop()
             await self._app.stop()
             await self._app.shutdown()
 

@@ -1,6 +1,7 @@
 """Tests for cron expression parsing."""
 
 from datetime import datetime
+from pathlib import Path
 
 from psi_agent.session.schedule import Schedule
 
@@ -114,7 +115,3 @@ class TestCronParsing:
 
         next_run = schedule.get_next_run()
         assert next_run.minute % 15 == 0
-
-
-# Import Path for the tests
-from pathlib import Path  # noqa: E402
