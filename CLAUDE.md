@@ -203,6 +203,67 @@ Task instructions here...
   - `ruff check` — lint
   - `ruff format` — format
   - `ty check` — typing 检查
+- 质量检查：所有代码必须通过 format、lint、typing 和 test 才算完成
+
+### 日志规范
+
+- 使用 **loguru** 进行日志记录
+- 在所有关键操作处添加日志：
+  - 函数入口/出口
+  - 请求接收/转发/响应
+  - 错误和异常
+  - 配置加载
+- 日志级别使用：
+  - `DEBUG`：详细调试信息（请求body、响应内容等）
+  - `INFO`：正常操作信息（启动、请求接收、连接建立等）
+  - `WARNING`：可恢复的问题
+  - `ERROR`：错误和异常
+
+### CLI 规范
+
+- 使用 **tyro** 实现所有命令行接口
+- tyro 应该是 Python API 的直接封装：
+  - 先定义 Python API 函数（带完整类型注解）
+  - 使用 `tyro.cli()` 从函数签名自动生成 CLI
+  - 保持 Python API 和 CLI 完全一致
+- 示例：
+
+```python
+# Python API
+def run(
+    session_socket: str,
+    model: str,
+    api_key: str,
+    base_url: str = "https://api.openai.com/v1",
+) -> None:
+    """Run the OpenAI completions server."""
+    ...
+
+# CLI 入口
+def main() -> None:
+    tyro.cli(run)
+```
+
+### 测试规范
+
+- 所有 Python API 必须编写单元测试
+- 测试放在 `tests/` 目录，结构与 `src/` 对应
+- 使用 pytest 作为测试框架
+- 测试覆盖：
+  - 配置解析
+  - API 请求/响应
+  - 错误处理
+  - 核心逻辑
+
+### Package 结构
+
+- 包名：`psi-agent`
+- 源码目录：`src/psi_agent/`
+- 子包结构：
+  - `psi_agent.ai.*` — psi-ai-* 组件
+  - `psi_agent.session` — psi-session 组件
+  - `psi_agent.channel.*` — psi-channel-* 组件
+  - `psi_agent.workspace.*` — psi-workspace-* 组件
 
 ### 文档字符串
 
@@ -238,7 +299,7 @@ uv run psi-session \
 启动 AI 组件（OpenRouter 示例）：
 
 ```bash
-uv run psi-ai-openai-completion \
+uv run psi-ai-openai-completions \
   --session-socket ./ai.sock \
   --model tencent/hy3-preview:free \
   --api-key sk-or-v1-xxxxxx \
