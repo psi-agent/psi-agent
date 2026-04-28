@@ -101,7 +101,7 @@ workspace/
 
 **规范：**
 - 文件名：`<tool_name>.py`（如 `read.py`）
-- 入口函数：`def tool(...) -> ...`
+- 入口函数：`async def tool(...) -> ...`（必须是 async）
 - 函数签名：使用类型注解和默认值定义参数
 - 文档字符串：使用统一格式描述函数作用、参数含义、返回值含义
 - session 启动时扫描 tools/ 目录并加载
@@ -111,8 +111,8 @@ workspace/
 ```python
 # tools/read.py
 
-def tool(file_path: str) -> str:
-    """Read file content.
+async def tool(file_path: str) -> str:
+    """Read file content asynchronously.
     
     Args:
         file_path: Path to the file to read.
@@ -120,10 +120,10 @@ def tool(file_path: str) -> str:
     Returns:
         File content as string.
     """
-    ...
+    # 使用 aiofiles 异步读取
+    async with aiofiles.open(file_path) as f:
+        return await f.read()
 ```
-
-**注意：docstr 统一格式待定，未来有新信息时需在此更新。**
 
 传递给 psi-ai-* 时使用 OpenAI tool call 规范。
 
@@ -204,6 +204,41 @@ Task instructions here...
   - `ruff format` — format
   - `ty check` — typing 检查
 - 质量检查：所有代码必须通过 format、lint、typing 和 test 才算完成
+
+### Async 接口规范
+
+**所有接口函数必须是 async：**
+
+- workspace 中的 `tool()` 函数 — 必须是 async
+- `build_system_prompt()` — 必须是 async
+- `compact_history()` — 必须是 async
+
+**所有 IO 操作必须使用 async 生态方法：**
+
+- **文件系统**：使用 `aiofiles` 或 asyncio 包装
+- **网络请求**：使用 `httpx.AsyncClient` 或 `aiohttp`
+- **子进程**：使用 `asyncio.create_subprocess_exec` 或 `asyncio.create_subprocess_shell`（不是 `subprocess.run`）
+
+示例：
+
+```python
+# 正确 ✓ - async tool
+async def tool(command: str, timeout: int = 30) -> str:
+    process = await asyncio.create_subprocess_shell(
+        command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await asyncio.wait_for(
+        process.communicate(),
+        timeout=timeout,
+    )
+    ...
+
+# 错误 ✗ - 同步 subprocess
+def tool(command: str) -> str:
+    result = subprocess.run(command, ...)  # 阻塞!
+```
 
 ### Import 顺序规范
 
@@ -415,7 +450,7 @@ def main() -> None:
 
 workspace 中 tools 目录下的工具函数规范：
 
-- 入口函数名：`tool`
+- 入口函数名：`tool`（必须是 async）
 - 使用类型注解定义参数类型
 - 使用默认值定义可选参数
 - 文档字符串描述函数、参数、返回值（Google style）
@@ -425,8 +460,8 @@ workspace 中 tools 目录下的工具函数规范：
 ```python
 # tools/read.py
 
-def tool(file_path: str) -> str:
-    """Read file content.
+async def tool(file_path: str) -> str:
+    """Read file content asynchronously.
 
     Args:
         file_path: Path to the file to read.
@@ -434,7 +469,8 @@ def tool(file_path: str) -> str:
     Returns:
         File content as string.
     """
-    ...
+    async with aiofiles.open(file_path) as f:
+        return await f.read()
 ```
 
 ## 开发工作流
