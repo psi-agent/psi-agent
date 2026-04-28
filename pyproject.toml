@@ -23,6 +23,7 @@ dev = [
 
 [project.scripts]
 psi-ai-openai-completions = "psi_agent.ai.openai_completions.cli:main"
+psi-session = "psi_agent.session.cli:main"
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
