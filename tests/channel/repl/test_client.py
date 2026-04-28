@@ -159,4 +159,4 @@ class TestReplClient:
         client = ReplClient(config)
 
         with pytest.raises(RuntimeError, match="Client not initialized"):
-            await client.send_message([{"role": "user", "content": "Hi"}])
+            await client.send_message("Hi")
