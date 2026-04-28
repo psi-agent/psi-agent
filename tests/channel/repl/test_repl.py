@@ -1,12 +1,13 @@
 """Tests for REPL interface."""
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from prompt_toolkit.history import InMemoryHistory
+from prompt_toolkit.history import FileHistory
 
 from psi_agent.channel.repl.config import ReplConfig
-from psi_agent.channel.repl.repl import Repl
+from psi_agent.channel.repl.repl import Repl, _ensure_history_dir
 
 
 class TestRepl:
@@ -120,9 +121,10 @@ class TestReplHistory:
     """Tests for REPL history navigation."""
 
     @pytest.fixture
-    def config(self) -> ReplConfig:
-        """Create test config."""
-        return ReplConfig(session_socket="/tmp/test.sock")
+    def config(self, tmp_path: Path) -> ReplConfig:
+        """Create test config with custom history file."""
+        history_file = tmp_path / "history.txt"
+        return ReplConfig(session_socket="/tmp/test.sock", history_file=str(history_file))
 
     @pytest.fixture
     def repl(self, config: ReplConfig) -> Repl:
@@ -145,9 +147,65 @@ class TestReplHistory:
         ):
             await repl.run()
 
-            # Session should have InMemoryHistory
+            # Session should have FileHistory
             assert repl._session is not None
-            assert isinstance(repl._session.history, InMemoryHistory)
+            assert isinstance(repl._session.history, FileHistory)
+
+    @pytest.mark.asyncio
+    async def test_history_persists_to_file(self, tmp_path: Path) -> None:
+        """Test that FileHistory is created with correct path."""
+        history_file = tmp_path / "history.txt"
+        config = ReplConfig(session_socket="/tmp/test.sock", history_file=str(history_file))
+        repl = Repl(config)
+
+        inputs = ["First message", "/quit"]
+        input_iter = iter(inputs)
+
+        async def mock_read() -> str | None:
+            return next(input_iter, None)
+
+        with (
+            patch.object(repl, "_read_input", mock_read),
+            patch.object(repl.client, "send_message", AsyncMock(return_value="Response")),
+            patch("builtins.print"),
+        ):
+            await repl.run()
+
+            # Session should have FileHistory with correct path
+            assert repl._session is not None
+            assert isinstance(repl._session.history, FileHistory)
+            # FileHistory stores the filename
+            assert repl._session.history.filename == str(history_file)
+
+    @pytest.mark.asyncio
+    async def test_history_loaded_from_file(self, tmp_path: Path) -> None:
+        """Test that FileHistory can load from existing file."""
+        history_file = tmp_path / "history.txt"
+        # Pre-populate history file in FileHistory format
+        history_file.write_text("\n# 2026-04-29 00:00:00\n+Previous entry\n")
+
+        config = ReplConfig(session_socket="/tmp/test.sock", history_file=str(history_file))
+        repl = Repl(config)
+
+        inputs = ["/quit"]
+        input_iter = iter(inputs)
+
+        async def mock_read() -> str | None:
+            return next(input_iter, None)
+
+        with (
+            patch.object(repl, "_read_input", mock_read),
+            patch.object(repl.client, "send_message", AsyncMock(return_value="Response")),
+            patch("builtins.print"),
+        ):
+            await repl.run()
+
+            # Session should have FileHistory that can read existing entries
+            assert repl._session is not None
+            assert isinstance(repl._session.history, FileHistory)
+            # FileHistory loads existing entries
+            history_items = list(repl._session.history.load_history_strings())
+            assert "Previous entry" in history_items
 
     @pytest.mark.asyncio
     async def test_multiline_input_preserved(self, repl: Repl) -> None:
@@ -175,9 +233,10 @@ class TestReplEditing:
     """Tests for REPL line editing capabilities."""
 
     @pytest.fixture
-    def config(self) -> ReplConfig:
-        """Create test config."""
-        return ReplConfig(session_socket="/tmp/test.sock")
+    def config(self, tmp_path: Path) -> ReplConfig:
+        """Create test config with custom history file."""
+        history_file = tmp_path / "history.txt"
+        return ReplConfig(session_socket="/tmp/test.sock", history_file=str(history_file))
 
     @pytest.fixture
     def repl(self, config: ReplConfig) -> Repl:
@@ -204,7 +263,7 @@ class TestReplEditing:
         """Test that prompt_async is called with correct parameters."""
         repl._session = MagicMock()
         repl._session.prompt_async = AsyncMock(return_value="test")
-        repl._session.history = InMemoryHistory()
+        repl._session.history = FileHistory(":memory:")
 
         _ = await repl._read_input()
 
@@ -213,3 +272,34 @@ class TestReplEditing:
         call_args = repl._session.prompt_async.call_args
         assert call_args[0][0] == "> "  # prompt string
         assert call_args[1]["multiline"] is True  # multiline enabled
+
+
+class TestEnsureHistoryDir:
+    """Tests for _ensure_history_dir helper function."""
+
+    def test_creates_directory_if_missing(self, tmp_path: Path) -> None:
+        """Test that directory is created when it doesn't exist."""
+        history_path = tmp_path / "subdir" / "history.txt"
+        assert not history_path.parent.exists()
+
+        _ensure_history_dir(history_path)
+
+        assert history_path.parent.exists()
+
+    def test_does_not_fail_if_directory_exists(self, tmp_path: Path) -> None:
+        """Test that function succeeds when directory already exists."""
+        history_path = tmp_path / "history.txt"
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Should not raise
+        _ensure_history_dir(history_path)
+
+        assert history_path.parent.exists()
+
+    def test_creates_nested_directories(self, tmp_path: Path) -> None:
+        """Test that nested directories are created."""
+        history_path = tmp_path / "a" / "b" / "c" / "history.txt"
+
+        _ensure_history_dir(history_path)
+
+        assert history_path.parent.exists()
