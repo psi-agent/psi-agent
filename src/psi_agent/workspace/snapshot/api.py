@@ -37,24 +37,24 @@ async def snapshot(
     Raises:
         SnapshotError: If snapshot operation fails.
     """
-    input_path = Path(input_file).resolve()
-    mount_path = Path(mount_point).resolve()
+    input_path = Path(await anyio.Path(input_file).resolve())
+    mount_path = Path(await anyio.Path(mount_point).resolve())
 
     # Validate inputs
-    if not input_path.exists():
+    if not await anyio.Path(input_path).exists():
         raise SnapshotError(f"Input file does not exist: {input_path}")
-    if not mount_path.exists():
+    if not await anyio.Path(mount_path).exists():
         raise SnapshotError(f"Mount point does not exist: {mount_path}")
 
     # Determine output path
-    output_path = Path(output_file).resolve() if output_file else input_path
+    output_path = Path(await anyio.Path(output_file).resolve()) if output_file else input_path
 
     logger.info(f"Creating snapshot from {mount_path} to {output_path}")
     logger.debug(f"Input: {input_path}, Tag: {tag}")
 
     # Read mount info to get upper directory
     mount_info_path = mount_path / ".psi-mount-info"
-    if not mount_info_path.exists():
+    if not await anyio.Path(mount_info_path).exists():
         raise SnapshotError(f"Mount info file not found: {mount_info_path}")
 
     async with await anyio.open_file(mount_info_path) as f:
@@ -100,7 +100,7 @@ async def snapshot(
 
         # Copy upper directory as new layer
         new_layer_dir = temp_path / str(new_layer_uuid)
-        await _copy_directory(upper_dir, new_layer_dir)
+        await _copy_directory(Path(upper_dir), new_layer_dir)
 
         # Write updated manifest
         manifest_path = temp_path / "manifest.json"
@@ -113,7 +113,7 @@ async def snapshot(
         await _create_squashfs(temp_path, temp_squashfs)
 
         # Atomic move to output path
-        if output_path.exists():
+        if await anyio.Path(output_path).exists():
             # Create temp file in same directory for atomic move
             temp_output = output_path.with_suffix(".tmp")
             shutil.move(str(temp_squashfs), str(temp_output))
@@ -146,7 +146,7 @@ async def _read_manifest_from_squashfs(squashfs_file: Path) -> Manifest:
         await process.communicate()
 
         manifest_path = temp_path / "manifest.json"
-        if not manifest_path.exists():
+        if not await anyio.Path(manifest_path).exists():
             raise SnapshotError("manifest.json not found in squashfs")
 
         async with await anyio.open_file(manifest_path) as f:
@@ -185,12 +185,12 @@ async def _copy_directory(src: Path, dst: Path) -> None:
         src: Source directory.
         dst: Destination directory.
     """
-    dst.mkdir(parents=True, exist_ok=True)
+    await anyio.Path(dst).mkdir(parents=True, exist_ok=True)
 
-    for item in src.iterdir():
+    async for item in anyio.Path(src).iterdir():
         dest_item = dst / item.name
-        if item.is_dir():
-            await _copy_directory(item, dest_item)
+        if await anyio.Path(item).is_dir():
+            await _copy_directory(Path(item), dest_item)
         else:
             async with await anyio.open_file(item, "rb") as src_file:
                 content = await src_file.read()

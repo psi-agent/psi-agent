@@ -277,29 +277,32 @@ class TestReplEditing:
 class TestEnsureHistoryDir:
     """Tests for _ensure_history_dir helper function."""
 
-    def test_creates_directory_if_missing(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_creates_directory_if_missing(self, tmp_path: Path) -> None:
         """Test that directory is created when it doesn't exist."""
         history_path = tmp_path / "subdir" / "history.txt"
         assert not history_path.parent.exists()
 
-        _ensure_history_dir(history_path)
+        await _ensure_history_dir(history_path)
 
         assert history_path.parent.exists()
 
-    def test_does_not_fail_if_directory_exists(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_does_not_fail_if_directory_exists(self, tmp_path: Path) -> None:
         """Test that function succeeds when directory already exists."""
         history_path = tmp_path / "history.txt"
         history_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Should not raise
-        _ensure_history_dir(history_path)
+        await _ensure_history_dir(history_path)
 
         assert history_path.parent.exists()
 
-    def test_creates_nested_directories(self, tmp_path: Path) -> None:
+    @pytest.mark.asyncio
+    async def test_creates_nested_directories(self, tmp_path: Path) -> None:
         """Test that nested directories are created."""
         history_path = tmp_path / "a" / "b" / "c" / "history.txt"
 
-        _ensure_history_dir(history_path)
+        await _ensure_history_dir(history_path)
 
         assert history_path.parent.exists()

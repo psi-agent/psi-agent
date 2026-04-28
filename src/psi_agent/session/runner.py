@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import aiohttp
+import anyio
 from loguru import logger
 
 from psi_agent.session.config import SessionConfig
@@ -30,7 +31,7 @@ async def load_system_prompt(workspace: Path) -> str | None:
         System prompt string, or None if not available.
     """
     system_file = workspace / "systems" / "system.py"
-    if not system_file.exists():
+    if not await anyio.Path(system_file).exists():
         logger.debug("No systems/system.py found, skipping system prompt")
         return None
 
@@ -79,15 +80,15 @@ class SessionRunner:
     async def __aenter__(self) -> SessionRunner:
         """Initialize session resources."""
         # Initialize history
-        self.history = initialize_history(self.config.history_file)
+        self.history = await initialize_history(self.config.history_file)
 
         # Initialize workspace watcher
         self._watcher = WorkspaceWatcher(self.config.workspace_path())
-        self._watcher.initialize()
+        await self._watcher.initialize()
 
         # Load tools
         tools_dir = self.config.tools_dir()
-        load_all_tools(tools_dir, self.registry)
+        await load_all_tools(tools_dir, self.registry)
         logger.info(f"Loaded {len(self.registry.tools)} tools")
 
         # Load system prompt
@@ -123,7 +124,7 @@ class SessionRunner:
         """
         # Handle tool changes
         if changes.tools_changed:
-            detect_and_update_tools(self.config.tools_dir(), self.registry)
+            await detect_and_update_tools(self.config.tools_dir(), self.registry)
 
         # Handle skill/schedule changes - rebuild system prompt
         if changes.skills_changed or changes.schedules_changed:
@@ -177,7 +178,7 @@ class SessionRunner:
 
         # Check for workspace changes
         if self._watcher is not None:
-            changes = self._watcher.check_for_changes()
+            changes = await self._watcher.check_for_changes()
             if changes.has_changes:
                 await self._handle_workspace_changes(changes)
 
@@ -191,7 +192,7 @@ class SessionRunner:
         response = await self._run_conversation(messages)
 
         # Persist history
-        persist_history(self.history)
+        await persist_history(self.history)
 
         return response
 
@@ -308,7 +309,7 @@ class SessionRunner:
 
         # Check for workspace changes
         if self._watcher is not None:
-            changes = self._watcher.check_for_changes()
+            changes = await self._watcher.check_for_changes()
             if changes.has_changes:
                 await self._handle_workspace_changes(changes)
 
@@ -404,7 +405,7 @@ class SessionRunner:
             # No tool calls - return streaming response
             final_content = "".join(content_chunks)
             self.history.add_message({"role": "assistant", "content": final_content})
-            persist_history(self.history)
+            await persist_history(self.history)
 
             # Return as SSE generator
             return self._make_streaming_response(content_chunks)
