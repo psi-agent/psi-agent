@@ -68,6 +68,7 @@ class SessionRunner:
         self.registry = ToolRegistry()
         self.history: History | None = None
         self.client: aiohttp.ClientSession | None = None
+        self._system_prompt_cache: str | None = None
 
     async def __aenter__(self) -> SessionRunner:
         """Initialize session resources."""
@@ -78,6 +79,9 @@ class SessionRunner:
         tools_dir = self.config.tools_dir()
         load_all_tools(tools_dir, self.registry)
         logger.info(f"Loaded {len(self.registry.tools)} tools")
+
+        # Load system prompt
+        self._system_prompt_cache = await load_system_prompt(self.config.workspace_path())
 
         # Initialize HTTP client for psi-ai
         connector = aiohttp.UnixConnector(path=str(self.config.ai_socket_path()))
@@ -133,30 +137,13 @@ class SessionRunner:
         messages = []
 
         # Add system prompt if available
-        system_prompt = self._get_cached_system_prompt()
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
+        if self._system_prompt_cache:
+            messages.append({"role": "system", "content": self._system_prompt_cache})
 
         # Add history
         messages.extend(self.history.messages)
 
         return messages
-
-    _system_prompt_cache: str | None = None
-
-    def _get_cached_system_prompt(self) -> str | None:
-        """Get cached system prompt or load it.
-
-        Returns:
-            System prompt string or None.
-        """
-        if self._system_prompt_cache is None:
-            import asyncio
-
-            self._system_prompt_cache = asyncio.get_event_loop().run_until_complete(
-                load_system_prompt(self.config.workspace_path())
-            )
-        return self._system_prompt_cache
 
     async def _run_conversation(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
         """Run conversation with LLM, handling tool calls.
