@@ -84,15 +84,16 @@ class TestRepl:
         async def mock_read() -> str | None:
             return next(input_iter, None)
 
+        mock_send = AsyncMock(return_value="Response")
         with (
             patch.object(repl, "_read_input", mock_read),
-            patch.object(repl.client, "send_message", AsyncMock(return_value="Response")),
+            patch.object(repl.client, "send_message", mock_send),
             patch("builtins.print"),
         ):
             await repl.run()
 
             # send_message should not have been called for empty input
-            repl.client.send_message.assert_not_called()
+            mock_send.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_message_sent_to_session(self, repl: Repl) -> None:
@@ -103,15 +104,16 @@ class TestRepl:
         async def mock_read() -> str | None:
             return next(input_iter, None)
 
+        mock_send = AsyncMock(return_value="Hi there!")
         with (
             patch.object(repl, "_read_input", mock_read),
-            patch.object(repl.client, "send_message", AsyncMock(return_value="Hi there!")),
+            patch.object(repl.client, "send_message", mock_send),
             patch("builtins.print"),
         ):
             await repl.run()
 
             # send_message should be called with the user input
-            repl.client.send_message.assert_called_once_with("Hello")
+            mock_send.assert_called_once_with("Hello")
 
 
 class TestReplHistory:
@@ -157,15 +159,16 @@ class TestReplHistory:
         async def mock_read() -> str | None:
             return next(input_iter, None)
 
+        mock_send = AsyncMock(return_value="Response")
         with (
             patch.object(repl, "_read_input", mock_read),
-            patch.object(repl.client, "send_message", AsyncMock(return_value="Response")),
+            patch.object(repl.client, "send_message", mock_send),
             patch("builtins.print"),
         ):
             await repl.run()
 
             # Check multiline message preserved
-            repl.client.send_message.assert_called_once_with(multiline_input)
+            mock_send.assert_called_once_with(multiline_input)
 
 
 class TestReplEditing:
