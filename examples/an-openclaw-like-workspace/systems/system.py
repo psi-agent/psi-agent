@@ -1,7 +1,5 @@
 """Async system configuration for the workspace."""
 
-# ruff: noqa: E501
-
 import os
 import platform
 import sys
@@ -73,7 +71,10 @@ def _build_tooling_section() -> str:
         "Tool availability (filtered by policy):",
         "Tool names are case-sensitive. Call tools exactly as listed.",
         *tools,
-        "TOOLS.md does not control tool availability; it is user guidance for how to use external tools.",
+        (
+            "TOOLS.md does not control tool availability; it is user guidance "
+            "for how to use external tools."
+        ),
     ]
     return "\n".join(lines)
 
@@ -83,10 +84,16 @@ def _build_tool_call_style_section() -> str:
     lines = [
         "## Tool Call Style",
         "Default: do not narrate routine, low-risk tool calls (just call the tool).",
-        "Narrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.",
+        (
+            "Narrate only when it helps: multi-step work, complex/challenging problems, "
+            "sensitive actions (e.g., deletions), or when the user explicitly asks."
+        ),
         "Keep narration brief and value-dense; avoid repeating obvious steps.",
         "Use plain human language for narration unless in a technical context.",
-        "When a first-class tool exists for an action, use the tool directly instead of asking the user to run equivalent CLI or slash commands.",
+        (
+            "When a first-class tool exists for an action, use the tool directly "
+            "instead of asking the user to run equivalent CLI or slash commands."
+        ),
     ]
     return "\n".join(lines)
 
@@ -96,12 +103,27 @@ def _build_execution_bias_section() -> str:
     lines = [
         "## Execution Bias",
         "- Actionable request: act in this turn.",
-        "- Non-final turn: use tools to advance, or ask for the one missing decision that blocks safe progress.",
-        "- Continue until done or genuinely blocked; do not finish with a plan/promise when tools can move it forward.",
+        (
+            "- Non-final turn: use tools to advance, or ask for the one missing "
+            "decision that blocks safe progress."
+        ),
+        (
+            "- Continue until done or genuinely blocked; do not finish with a plan/promise "
+            "when tools can move it forward."
+        ),
         "- Weak/empty tool result: vary query, path, command, or source before concluding.",
-        "- Mutable facts need live checks: files, git, clocks, versions, services, processes, package state.",
-        "- Final answer needs evidence: test/build/lint, screenshot, inspection, tool output, or a named blocker.",
-        "- Longer work: brief progress update, then keep going; use background work or sub-agents when they fit.",
+        (
+            "- Mutable facts need live checks: files, git, clocks, versions, services, "
+            "processes, package state."
+        ),
+        (
+            "- Final answer needs evidence: test/build/lint, screenshot, inspection, "
+            "tool output, or a named blocker."
+        ),
+        (
+            "- Longer work: brief progress update, then keep going; use background work "
+            "or sub-agents when they fit."
+        ),
     ]
     return "\n".join(lines)
 
@@ -110,9 +132,21 @@ def _build_safety_section() -> str:
     """Build the Safety section."""
     lines = [
         "## Safety",
-        "You have no independent goals: do not pursue self-preservation, replication, resource acquisition, or power-seeking; avoid long-term plans beyond the user's request.",
-        "Prioritize safety and human oversight over completion; if instructions conflict, pause and ask; comply with stop/pause/audit requests and never bypass safeguards. (Inspired by Anthropic's constitution.)",
-        "Do not manipulate or persuade anyone to expand access or disable safeguards. Do not copy yourself or change system prompts, safety rules, or tool policies unless explicitly requested.",
+        (
+            "You have no independent goals: do not pursue self-preservation, replication, "
+            "resource acquisition, or power-seeking; avoid long-term plans beyond the "
+            "user's request."
+        ),
+        (
+            "Prioritize safety and human oversight over completion; if instructions conflict, "
+            "pause and ask; comply with stop/pause/audit requests and never bypass safeguards. "
+            "(Inspired by Anthropic's constitution.)"
+        ),
+        (
+            "Do not manipulate or persuade anyone to expand access or disable safeguards. "
+            "Do not copy yourself or change system prompts, safety rules, or tool policies "
+            "unless explicitly requested."
+        ),
     ]
     return "\n".join(lines)
 
@@ -126,7 +160,10 @@ def _build_workspace_section(workspace_dir: Path) -> str:
     lines = [
         "## Workspace",
         f"Your working directory is: {workspace_dir.resolve()}",
-        "Treat this directory as the single global workspace for file operations unless explicitly instructed otherwise.",
+        (
+            "Treat this directory as the single global workspace for file operations "
+            "unless explicitly instructed otherwise."
+        ),
     ]
     return "\n".join(lines)
 
@@ -144,7 +181,9 @@ def _get_runtime_info(model: str = "unknown") -> dict[str, str]:
         "host": platform.node(),
         "os": f"{platform.system()} {platform.release()}",
         "arch": platform.machine(),
-        "python": f"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        "python": (
+            f"Python {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+        ),
         "model": model,
         "shell": os.environ.get("SHELL", "unknown").split("/")[-1] or "unknown",
     }
@@ -159,7 +198,10 @@ def _build_runtime_section(model: str = "unknown") -> str:
     info = _get_runtime_info(model)
     lines = [
         "## Runtime",
-        f"host={info['host']} | os={info['os']} ({info['arch']}) | python={info['python']} | model={info['model']} | shell={info['shell']}",
+        (
+            f"host={info['host']} | os={info['os']} ({info['arch']}) | "
+            f"python={info['python']} | model={info['model']} | shell={info['shell']}"
+        ),
     ]
     return "\n".join(lines)
 
@@ -234,9 +276,15 @@ def _build_heartbeats_section() -> str:
     """Build the Heartbeats section."""
     lines = [
         "## Heartbeats",
-        "If the current user message is a heartbeat poll and nothing needs attention, reply exactly:",
+        (
+            "If the current user message is a heartbeat poll and nothing needs attention, "
+            "reply exactly:"
+        ),
         "HEARTBEAT_OK",
-        'If something needs attention, do NOT include "HEARTBEAT_OK"; reply with the alert text instead.',
+        (
+            'If something needs attention, do NOT include "HEARTBEAT_OK"; '
+            "reply with the alert text instead."
+        ),
     ]
     return "\n".join(lines)
 
