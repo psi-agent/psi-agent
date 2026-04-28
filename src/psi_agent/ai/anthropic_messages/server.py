@@ -8,6 +8,7 @@ from loguru import logger
 
 from psi_agent.ai.anthropic_messages.client import AnthropicMessagesClient
 from psi_agent.ai.anthropic_messages.config import AnthropicMessagesConfig
+from psi_agent.ai.anthropic_messages.translator import translate_openai_to_anthropic
 
 
 class AnthropicMessagesServer:
@@ -27,12 +28,14 @@ class AnthropicMessagesServer:
 
     def _setup_routes(self) -> None:
         """Set up HTTP routes."""
-        self.app.router.add_post("/v1/messages", self._handle_messages)
+        self.app.router.add_post("/v1/chat/completions", self._handle_chat_completions)
         self.app.router.add_route("*", "/v1/{path:.*}", self._handle_other)
-        logger.debug("Routes configured: POST /v1/messages, wildcard /v1/*")
+        logger.debug("Routes configured: POST /v1/chat/completions, wildcard /v1/*")
 
-    async def _handle_messages(self, request: web.Request) -> web.Response | web.StreamResponse:
-        """Handle messages request.
+    async def _handle_chat_completions(
+        self, request: web.Request
+    ) -> web.Response | web.StreamResponse:
+        """Handle chat completions request.
 
         Args:
             request: The incoming HTTP request.
@@ -40,7 +43,7 @@ class AnthropicMessagesServer:
         Returns:
             The HTTP response.
         """
-        logger.info("Received POST /v1/messages request")
+        logger.info("Received POST /v1/chat/completions request")
 
         try:
             body = await request.json()
@@ -48,11 +51,14 @@ class AnthropicMessagesServer:
             logger.error(f"Failed to parse request body: {e}")
             return web.Response(status=400, text="Invalid JSON body")
 
-        stream = body.get("stream", False)
+        # Translate OpenAI format to Anthropic format
+        anthropic_body = translate_openai_to_anthropic(body)
+
+        stream = anthropic_body.get("stream", False)
         body_summary = {
-            k: v if k != "messages" else f"[{len(v)} messages]" for k, v in body.items()
+            k: v if k != "messages" else f"[{len(v)} messages]" for k, v in anthropic_body.items()
         }
-        logger.debug(f"Request body summary: {body_summary}")
+        logger.debug(f"Translated request body summary: {body_summary}")
 
         if self.client is None:
             logger.error("Client not initialized")
@@ -61,10 +67,10 @@ class AnthropicMessagesServer:
         try:
             if stream:
                 logger.debug("Handling streaming request")
-                return await self._handle_streaming(request, body)
+                return await self._handle_streaming(request, anthropic_body)
             else:
                 logger.debug("Handling non-streaming request")
-                return await self._handle_non_streaming(body)
+                return await self._handle_non_streaming(anthropic_body)
         except Exception as e:
             logger.exception(f"Error handling request: {e}")
             return web.Response(status=500, text=str(e))

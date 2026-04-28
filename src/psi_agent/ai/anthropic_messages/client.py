@@ -9,6 +9,10 @@ from anthropic.types import Message
 from loguru import logger
 
 from psi_agent.ai.anthropic_messages.config import AnthropicMessagesConfig
+from psi_agent.ai.anthropic_messages.translator import (
+    translate_anthropic_stream,
+    translate_anthropic_to_openai,
+)
 
 
 class AnthropicMessagesClient:
@@ -78,7 +82,7 @@ class AnthropicMessagesClient:
             body: The request body.
 
         Returns:
-            The response body as a dict.
+            The response body as a dict in OpenAI format.
         """
         assert self._client is not None
 
@@ -87,8 +91,10 @@ class AnthropicMessagesClient:
             logger.info("Received successful non-streaming response")
             logger.debug(f"Response id: {response.id}")
 
-            # Convert to dict for JSON serialization
-            return response.model_dump()
+            # Convert Anthropic response to OpenAI format
+            anthropic_dict = response.model_dump()
+            openai_response = translate_anthropic_to_openai(anthropic_dict)
+            return openai_response
 
         except Exception as e:
             return self._handle_error(e)
@@ -100,25 +106,33 @@ class AnthropicMessagesClient:
             body: The request body.
 
         Yields:
-            SSE chunks as strings.
+            OpenAI SSE chunks as strings.
         """
         assert self._client is not None
+        client = self._client  # Capture for closure
 
         body["stream"] = True
         try:
             logger.info("Starting streaming request")
-            async with self._client.messages.stream(**body) as stream:
-                async for event in stream:
-                    # Convert event to SSE format
-                    event_data = event.model_dump()
-                    yield f"event: {event.type}\ndata: {json.dumps(event_data)}\n\n"
+
+            async def anthropic_event_stream() -> AsyncGenerator[str]:
+                """Generate Anthropic SSE events."""
+                async with client.messages.stream(**body) as stream:
+                    async for event in stream:
+                        event_data = event.model_dump()
+                        yield f"event: {event.type}\ndata: {json.dumps(event_data)}\n\n"
+
+                yield "event: message_stop\ndata: {}\n\n"
+
+            # Translate Anthropic events to OpenAI chunks
+            async for openai_chunk in translate_anthropic_stream(anthropic_event_stream()):
+                yield openai_chunk
 
             logger.info("Streaming response completed")
-            yield "event: message_stop\ndata: {}\n\n"
 
         except Exception as e:
             error_response = self._handle_error(e)
-            yield f"event: error\ndata: {json.dumps(error_response)}\n\n"
+            yield f"data: {json.dumps(error_response)}\n\n"
 
     def _handle_error(self, e: Exception) -> dict[str, Any]:
         """Handle API errors and return error response.

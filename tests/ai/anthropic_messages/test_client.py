@@ -41,10 +41,18 @@ class TestAnthropicMessagesClient:
 
     @pytest.mark.asyncio
     async def test_non_streaming_request(self, client: AnthropicMessagesClient) -> None:
-        """Test non-streaming request."""
+        """Test non-streaming request returns OpenAI format."""
         mock_response = MagicMock()
         mock_response.id = "msg_123"
-        mock_response.model_dump = MagicMock(return_value={"id": "msg_123", "content": []})
+        mock_response.model_dump = MagicMock(
+            return_value={
+                "id": "msg_123",
+                "model": "claude-3",
+                "content": [{"type": "text", "text": "Hello!"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 10, "output_tokens": 5},
+            }
+        )
 
         with patch("psi_agent.ai.anthropic_messages.client.AsyncAnthropic") as mock_anthropic:
             mock_instance = AsyncMock()
@@ -63,14 +71,23 @@ class TestAnthropicMessagesClient:
 
                 # Type narrowing: non-streaming returns dict
                 assert not isinstance(result, AsyncGenerator)
+                # Check OpenAI format
                 assert result["id"] == "msg_123"
+                assert result["object"] == "chat.completion"
+                assert "choices" in result
+                assert result["choices"][0]["message"]["content"] == "Hello!"
 
     @pytest.mark.asyncio
     async def test_model_injection(self, client: AnthropicMessagesClient) -> None:
         """Test model is injected if not provided."""
         mock_response = MagicMock()
         mock_response.id = "msg_123"
-        mock_response.model_dump = MagicMock(return_value={"id": "msg_123"})
+        mock_response.model_dump = MagicMock(
+            return_value={
+                "id": "msg_123",
+                "content": [{"type": "text", "text": "Response"}],
+            }
+        )
 
         with patch("psi_agent.ai.anthropic_messages.client.AsyncAnthropic") as mock_anthropic:
             mock_instance = AsyncMock()

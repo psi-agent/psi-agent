@@ -12,17 +12,29 @@ The server SHALL listen for HTTP requests on a Unix socket path specified in con
 - **WHEN** socket file already exists at configured path
 - **THEN** server SHALL remove existing file before creating new socket
 
-### Requirement: Server handles POST /v1/messages
+### Requirement: Server handles POST /v1/chat/completions
 
-The server SHALL accept POST requests to `/v1/messages` endpoint with Anthropic Messages API format.
+The server SHALL accept POST requests to `/v1/chat/completions` endpoint with OpenAI chat completions format.
 
 #### Scenario: Valid request received
-- **WHEN** POST /v1/messages is received with valid Anthropic request body
-- **THEN** server SHALL forward request to Anthropic API and return response
+- **WHEN** POST /v1/chat/completions is received with valid OpenAI request body
+- **THEN** server SHALL translate request to Anthropic format and forward to API
 
 #### Scenario: Invalid JSON body
-- **WHEN** POST /v1/messages is received with malformed JSON
+- **WHEN** POST /v1/chat/completions is received with malformed JSON
 - **THEN** server SHALL return HTTP 400 with error message
+
+### Requirement: Server translates request format
+
+The server SHALL translate OpenAI chat completions format to Anthropic Messages format before forwarding.
+
+#### Scenario: System message handling
+- **WHEN** OpenAI request contains message with `role: "system"`
+- **THEN** server SHALL extract content as `system` parameter for Anthropic API
+
+#### Scenario: Message content conversion
+- **WHEN** OpenAI message has string content
+- **THEN** server SHALL convert to Anthropic content block array format
 
 ### Requirement: Server supports streaming responses
 
@@ -30,11 +42,11 @@ The server SHALL support streaming responses when `stream: true` is in request b
 
 #### Scenario: Streaming request
 - **WHEN** request includes `stream: true`
-- **THEN** server SHALL return SSE stream with Anthropic streaming events
+- **THEN** server SHALL return SSE stream with OpenAI streaming chunk format
 
 #### Scenario: Non-streaming request
 - **WHEN** request does not include `stream` or `stream: false`
-- **THEN** server SHALL return complete JSON response
+- **THEN** server SHALL return complete JSON response in OpenAI format
 
 ### Requirement: Server forwards errors appropriately
 
