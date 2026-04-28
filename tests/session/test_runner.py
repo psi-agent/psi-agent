@@ -210,7 +210,7 @@ async def test_build_messages_includes_system_prompt(config):
         assert runner.history is not None
         runner.history.add_message({"role": "user", "content": "Hi"})
 
-        messages = runner._build_messages()
+        messages = await runner._build_messages()
         assert len(messages) >= 2
         assert messages[0]["role"] == "system"
         assert messages[0]["content"] == "You are helpful."
