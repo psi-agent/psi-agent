@@ -1,5 +1,7 @@
 # psi-agent
 
+中文 | [English](README.md)
+
 一个以**可移植性**和**组件化**为核心理念的 agent 框架。
 
 ## 简介
@@ -50,8 +52,6 @@ uv run psi-ai-openai-completions \
   --base-url <提供商-api-url>  # 例如 https://openrouter.ai/api/v1
 ```
 
-> **注意：** `--base-url` 默认为 OpenAI 的 API。大多数用户需要指定其他提供商的 URL（例如 OpenRouter、Azure、本地 LLM 服务器）。
-
 4. 启动 channel 与 agent 交互：
 
 ```bash
@@ -69,7 +69,7 @@ psi-agent 包含四种组件类型：
 | `psi-channel-*` | 消息通道（REPL、Telegram、飞书等） |
 | `psi-workspace-*` | Workspace 打包和挂载工具 |
 
-### 可用命令
+### 可用脚本
 
 安装后，以下 CLI 工具可用：
 
@@ -90,4 +90,4 @@ psi-agent 包含四种组件类型：
 
 ## 许可证
 
-MIT License - 详见 [LICENSE.md](LICENSE.md)。
+GNU Affero General Public License v3.0 - 详见 [LICENSE.md](LICENSE.md)。

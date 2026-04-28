@@ -1,5 +1,7 @@
 # psi-agent
 
+[中文](README_zh.md) | English
+
 A portable and componentized agent framework.
 
 ## Introduction
@@ -50,8 +52,6 @@ uv run psi-ai-openai-completions \
   --base-url <provider-api-url>  # e.g., https://openrouter.ai/api/v1
 ```
 
-> **Note:** `--base-url` defaults to OpenAI's API. Most users will need to specify a different provider URL (e.g., OpenRouter, Azure, local LLM servers).
-
 4. Start a channel to interact with your agent:
 
 ```bash
@@ -69,7 +69,7 @@ psi-agent consists of four component types:
 | `psi-channel-*` | Message channels (REPL, Telegram, Feishu, etc.) |
 | `psi-workspace-*` | Workspace packaging and mounting tools |
 
-### Available Packages
+### Available Scripts
 
 After installation, these CLI tools are available:
 
@@ -90,4 +90,4 @@ For detailed documentation including workspace structure, tool development, and 
 
 ## License
 
-MIT License - see [LICENSE.md](LICENSE.md) for details.
+GNU Affero General Public License v3.0 - see [LICENSE.md](LICENSE.md) for details.
