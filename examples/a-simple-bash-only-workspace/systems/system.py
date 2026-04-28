@@ -14,7 +14,8 @@ async def build_system_prompt() -> str:
     Returns:
         System prompt string containing skill descriptions and guidelines.
     """
-    skills_dir = Path(__file__).parent.parent / "skills"
+    workspace = Path(__file__).parent.parent
+    skills_dir = workspace / "skills"
     skill_descriptions: list[str] = []
 
     if skills_dir.exists():
@@ -26,7 +27,11 @@ async def build_system_prompt() -> str:
                     if description:
                         skill_descriptions.append(f"- {skill_path.name}: {description}")
 
-    system_prompt = """You are a helpful assistant with access to tools and skills.
+    system_prompt = f"""You are a helpful assistant with access to tools and skills.
+
+## Workspace
+
+Your workspace directory is: {workspace.resolve()}
 
 ## Available Skills
 
