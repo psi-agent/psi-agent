@@ -13,6 +13,15 @@ psi-agent is built on two core principles:
 
 ## Installation
 
+### Using uvx (Recommended)
+
+For quick one-off usage without cloning the repository:
+
+```bash
+uvx psi-agent <component> <subcommand> [options...]
+# e.g., uvx psi-agent session --workspace ./workspace ...
+```
+
 ### Using pip
 
 ```bash
