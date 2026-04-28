@@ -1,5 +1,7 @@
 """Manifest data structure for workspace squashfs images."""
 
+from __future__ import annotations
+
 import json
 from dataclasses import dataclass, field
 from uuid import UUID

@@ -1,5 +1,7 @@
 """Unpack API for extracting squashfs to directory."""
 
+from __future__ import annotations
+
 import asyncio
 from pathlib import Path
 

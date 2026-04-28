@@ -1,5 +1,7 @@
 """REPL interface for interactive conversation."""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 from loguru import logger

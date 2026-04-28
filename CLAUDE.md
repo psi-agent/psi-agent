@@ -346,6 +346,13 @@ from psi_agent.ai.openai_completions.config import OpenAICompletionsConfig
 
 ### 类型注解规范
 
+**所有 Python 文件必须以 `from __future__ import annotations` 开头**（在模块文档字符串之后）。
+
+这确保：
+- 现代 PEP 604 联合语法 (`X | Y`) 在所有上下文中可用
+- 前向引用无需字符串引用
+- 与未来 Python 版本的行为一致
+
 使用 Python 3.14+ 现代语法：
 
 - **可选类型**：使用 `X | None` 而非 `Optional[X]`
@@ -356,6 +363,8 @@ from psi_agent.ai.openai_completions.config import OpenAICompletionsConfig
 
 ```python
 # 正确 ✓
+from __future__ import annotations
+
 def func(data: dict[str, Any] | None) -> list[str]:
     ...
 

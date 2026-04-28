@@ -1,5 +1,7 @@
 """HTTP client for communicating with psi-session."""
 
+from __future__ import annotations
+
 from typing import Any
 
 import aiohttp

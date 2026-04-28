@@ -1,5 +1,7 @@
 """Anthropic Messages server and client."""
 
+from __future__ import annotations
+
 from psi_agent.ai.anthropic_messages.client import AnthropicMessagesClient
 from psi_agent.ai.anthropic_messages.config import AnthropicMessagesConfig
 from psi_agent.ai.anthropic_messages.server import AnthropicMessagesServer

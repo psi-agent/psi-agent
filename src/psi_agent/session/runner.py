@@ -1,5 +1,7 @@
 """Core session runner - message processing and tool call handling."""
 
+from __future__ import annotations
+
 import importlib.util
 import json
 import sys
