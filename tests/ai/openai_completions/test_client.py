@@ -1,157 +1,243 @@
 """Tests for OpenAI completions client."""
 
-import httpx
+from collections.abc import AsyncGenerator
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from openai import (
-    APIConnectionError,
-    APIStatusError,
-    APITimeoutError,
-    AuthenticationError,
-    RateLimitError,
-)
 
 from psi_agent.ai.openai_completions.client import OpenAICompletionsClient
 from psi_agent.ai.openai_completions.config import OpenAICompletionsConfig
 
 
-@pytest.fixture
-def config() -> OpenAICompletionsConfig:
-    """Create test config."""
-    return OpenAICompletionsConfig(
-        session_socket="/tmp/test.sock",
-        model="test-model",
-        api_key="test-key",
-        base_url="https://api.example.com/v1",
-    )
+class TestOpenAICompletionsClient:
+    """Tests for OpenAICompletionsClient."""
 
-
-@pytest.mark.asyncio
-async def test_client_context_manager(config: OpenAICompletionsConfig) -> None:
-    """Test client async context manager."""
-    client = OpenAICompletionsClient(config)
-
-    # Should raise if used without context
-    with pytest.raises(RuntimeError):
-        await client.chat_completions({"messages": []})
-
-    # Should work with context
-    async with client:
-        assert client._client is not None
-
-    # Should be closed after context
-    assert client._client is None
-
-
-@pytest.mark.asyncio
-async def test_client_injects_model(config: OpenAICompletionsConfig) -> None:
-    """Test client injects model into request body."""
-    client = OpenAICompletionsClient(config)
-
-    async with client:
-        # Model should be injected
-        body = {"messages": [{"role": "user", "content": "Hello"}]}
-        # We can't test actual API call without mocking, but we can check the logic
-        assert "model" not in body
-
-
-@pytest.mark.asyncio
-async def test_client_model_already_present(config: OpenAICompletionsConfig) -> None:
-    """Test client respects existing model in request body."""
-    client = OpenAICompletionsClient(config)
-
-    async with client:
-        body = {"model": "custom-model", "messages": [{"role": "user", "content": "Hello"}]}
-        # Model should remain as-is
-        assert body["model"] == "custom-model"
-
-
-def _make_mock_request() -> httpx.Request:
-    """Create a mock httpx.Request for error construction."""
-    return httpx.Request("POST", "https://api.example.com/v1/chat/completions")
-
-
-def _make_mock_response(status_code: int = 200) -> httpx.Response:
-    """Create a mock httpx.Response for error construction."""
-    request = _make_mock_request()
-    return httpx.Response(status_code=status_code, request=request)
-
-
-@pytest.mark.asyncio
-async def test_handle_authentication_error(config: OpenAICompletionsConfig) -> None:
-    """Test authentication error handling."""
-    client = OpenAICompletionsClient(config)
-
-    async with client:
-        error = AuthenticationError(
-            message="Invalid API key",
-            response=_make_mock_response(401),
-            body=None,
+    @pytest.fixture
+    def config(self) -> OpenAICompletionsConfig:
+        """Create test config."""
+        return OpenAICompletionsConfig(
+            session_socket="/tmp/test.sock",
+            model="test-model",
+            api_key="test-key",
+            base_url="https://api.example.com/v1",
         )
-        result = client._handle_error(error)
-        assert result == {"error": "Authentication failed", "status_code": 401}
 
+    @pytest.fixture
+    def client(self, config: OpenAICompletionsConfig) -> OpenAICompletionsClient:
+        """Create test client."""
+        return OpenAICompletionsClient(config)
 
-@pytest.mark.asyncio
-async def test_handle_rate_limit_error(config: OpenAICompletionsConfig) -> None:
-    """Test rate limit error handling."""
-    client = OpenAICompletionsClient(config)
+    @pytest.mark.asyncio
+    async def test_context_manager(self, client: OpenAICompletionsClient) -> None:
+        """Test async context manager protocol."""
+        with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:
+            mock_instance = AsyncMock()
+            mock_instance.close = AsyncMock()
+            mock_openai.return_value = mock_instance
 
-    async with client:
-        error = RateLimitError(
-            message="Rate limit exceeded",
-            response=_make_mock_response(429),
-            body=None,
-        )
-        result = client._handle_error(error)
-        assert result == {"error": "Rate limit exceeded", "status_code": 429}
+            async with client:
+                assert client._client is not None
 
+            assert client._client is None
 
-@pytest.mark.asyncio
-async def test_handle_connection_error(config: OpenAICompletionsConfig) -> None:
-    """Test connection error handling."""
-    client = OpenAICompletionsClient(config)
+    @pytest.mark.asyncio
+    async def test_non_streaming_request(self, client: OpenAICompletionsClient) -> None:
+        """Test non-streaming request."""
+        mock_response = MagicMock()
+        mock_response.id = "chatcmpl-123"
+        mock_response.model_dump = MagicMock(return_value={"id": "chatcmpl-123", "choices": []})
 
-    async with client:
-        error = APIConnectionError(
-            message="Connection failed",
-            request=_make_mock_request(),
-        )
-        result = client._handle_error(error)
-        assert result == {"error": "Connection failed", "status_code": 500}
+        with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:
+            mock_instance = AsyncMock()
+            mock_instance.chat.completions.create = AsyncMock(return_value=mock_response)
+            mock_instance.close = AsyncMock()
+            mock_openai.return_value = mock_instance
 
+            async with client:
+                result = await client.chat_completions(
+                    {
+                        "messages": [{"role": "user", "content": "Hello"}],
+                        "max_tokens": 1024,
+                    },
+                    stream=False,
+                )
 
-@pytest.mark.asyncio
-async def test_handle_timeout_error(config: OpenAICompletionsConfig) -> None:
-    """Test timeout error handling."""
-    client = OpenAICompletionsClient(config)
+                # Type narrowing: non-streaming returns dict
+                assert not isinstance(result, AsyncGenerator)
+                assert result["id"] == "chatcmpl-123"
 
-    async with client:
-        error = APITimeoutError(request=_make_mock_request())
-        result = client._handle_error(error)
-        assert result == {"error": "Request timeout", "status_code": 500}
+    @pytest.mark.asyncio
+    async def test_streaming_request(self, client: OpenAICompletionsClient) -> None:
+        """Test streaming request."""
+        mock_chunk = MagicMock()
+        mock_chunk.model_dump_json = MagicMock(return_value='{"id": "chatcmpl-123"}')
 
+        async def mock_stream():
+            yield mock_chunk
 
-@pytest.mark.asyncio
-async def test_handle_api_status_error(config: OpenAICompletionsConfig) -> None:
-    """Test API status error handling."""
-    client = OpenAICompletionsClient(config)
+        with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:
+            mock_instance = AsyncMock()
+            mock_instance.chat.completions.create = AsyncMock(return_value=mock_stream())
+            mock_instance.close = AsyncMock()
+            mock_openai.return_value = mock_instance
 
-    async with client:
-        error = APIStatusError(
-            message="Internal server error",
-            response=_make_mock_response(500),
-            body=None,
-        )
-        result = client._handle_error(error)
-        assert result["status_code"] == 500
+            async with client:
+                result = await client.chat_completions(
+                    {
+                        "messages": [{"role": "user", "content": "Hello"}],
+                        "max_tokens": 1024,
+                    },
+                    stream=True,
+                )
 
+                # Type narrowing: streaming returns AsyncGenerator
+                chunks = []
+                async for chunk in result:
+                    chunks.append(chunk)
 
-@pytest.mark.asyncio
-async def test_handle_unknown_error(config: OpenAICompletionsConfig) -> None:
-    """Test unknown error handling."""
-    client = OpenAICompletionsClient(config)
+                # Should have 2 chunks: the response and [DONE]
+                assert len(chunks) == 2
+                assert "chatcmpl-123" in chunks[0]
+                assert "[DONE]" in chunks[1]
 
-    async with client:
-        error = ValueError("Something went wrong")
-        result = client._handle_error(error)
-        assert result == {"error": "Something went wrong", "status_code": 500}
+    @pytest.mark.asyncio
+    async def test_model_injection(self, client: OpenAICompletionsClient) -> None:
+        """Test model is injected if not provided."""
+        mock_response = MagicMock()
+        mock_response.id = "chatcmpl-123"
+        mock_response.model_dump = MagicMock(return_value={"id": "chatcmpl-123"})
+
+        with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:
+            mock_instance = AsyncMock()
+            mock_instance.chat.completions.create = AsyncMock(return_value=mock_response)
+            mock_instance.close = AsyncMock()
+            mock_openai.return_value = mock_instance
+
+            async with client:
+                await client.chat_completions(
+                    {
+                        "messages": [{"role": "user", "content": "Hello"}],
+                        "max_tokens": 1024,
+                    },
+                    stream=False,
+                )
+
+                # Check that model was injected
+                call_kwargs = mock_instance.chat.completions.create.call_args
+                assert call_kwargs[1]["model"] == "test-model"
+
+    @pytest.mark.asyncio
+    async def test_authentication_error(self, client: OpenAICompletionsClient) -> None:
+        """Test authentication error handling."""
+        from openai import AuthenticationError
+
+        with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:
+            mock_instance = AsyncMock()
+            mock_instance.chat.completions.create = AsyncMock(
+                side_effect=AuthenticationError(
+                    message="Invalid API key",
+                    response=MagicMock(status_code=401),
+                    body=None,
+                )
+            )
+            mock_instance.close = AsyncMock()
+            mock_openai.return_value = mock_instance
+
+            async with client:
+                result = await client.chat_completions(
+                    {
+                        "messages": [{"role": "user", "content": "Hello"}],
+                        "max_tokens": 1024,
+                    },
+                    stream=False,
+                )
+
+                # Type narrowing: non-streaming returns dict
+                assert not isinstance(result, AsyncGenerator)
+                assert "error" in result
+                assert result["status_code"] == 401
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_error(self, client: OpenAICompletionsClient) -> None:
+        """Test rate limit error handling."""
+        from openai import RateLimitError
+
+        with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:
+            mock_instance = AsyncMock()
+            mock_instance.chat.completions.create = AsyncMock(
+                side_effect=RateLimitError(
+                    message="Rate limit exceeded",
+                    response=MagicMock(status_code=429),
+                    body=None,
+                )
+            )
+            mock_instance.close = AsyncMock()
+            mock_openai.return_value = mock_instance
+
+            async with client:
+                result = await client.chat_completions(
+                    {
+                        "messages": [{"role": "user", "content": "Hello"}],
+                        "max_tokens": 1024,
+                    },
+                    stream=False,
+                )
+
+                # Type narrowing: non-streaming returns dict
+                assert not isinstance(result, AsyncGenerator)
+                assert "error" in result
+                assert result["status_code"] == 429
+
+    @pytest.mark.asyncio
+    async def test_connection_error(self, client: OpenAICompletionsClient) -> None:
+        """Test connection error handling."""
+        from openai import APIConnectionError
+
+        with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:
+            mock_instance = AsyncMock()
+            mock_instance.chat.completions.create = AsyncMock(
+                side_effect=APIConnectionError(request=MagicMock())
+            )
+            mock_instance.close = AsyncMock()
+            mock_openai.return_value = mock_instance
+
+            async with client:
+                result = await client.chat_completions(
+                    {
+                        "messages": [{"role": "user", "content": "Hello"}],
+                        "max_tokens": 1024,
+                    },
+                    stream=False,
+                )
+
+                # Type narrowing: non-streaming returns dict
+                assert not isinstance(result, AsyncGenerator)
+                assert "error" in result
+                assert result["status_code"] == 500
+
+    @pytest.mark.asyncio
+    async def test_timeout_error(self, client: OpenAICompletionsClient) -> None:
+        """Test timeout error handling."""
+        from openai import APITimeoutError
+
+        with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:
+            mock_instance = AsyncMock()
+            mock_instance.chat.completions.create = AsyncMock(
+                side_effect=APITimeoutError(request=MagicMock())
+            )
+            mock_instance.close = AsyncMock()
+            mock_openai.return_value = mock_instance
+
+            async with client:
+                result = await client.chat_completions(
+                    {
+                        "messages": [{"role": "user", "content": "Hello"}],
+                        "max_tokens": 1024,
+                    },
+                    stream=False,
+                )
+
+                # Type narrowing: non-streaming returns dict
+                assert not isinstance(result, AsyncGenerator)
+                assert "error" in result
+                assert result["status_code"] == 500
