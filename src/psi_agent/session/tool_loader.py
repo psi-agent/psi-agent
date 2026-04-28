@@ -1,5 +1,7 @@
 """Tool dynamic loading and registry management."""
 
+from __future__ import annotations
+
 import hashlib
 import importlib.util
 import inspect

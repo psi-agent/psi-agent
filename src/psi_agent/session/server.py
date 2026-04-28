@@ -1,5 +1,7 @@
 """HTTP server for psi-session on Unix socket."""
 
+from __future__ import annotations
+
 import json
 from typing import Any
 

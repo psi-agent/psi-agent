@@ -1,5 +1,7 @@
 """Umount API for unmounting overlayfs workspace."""
 
+from __future__ import annotations
+
 import asyncio
 from pathlib import Path
 

@@ -1,5 +1,7 @@
 """HTTP server for Anthropic Messages over Unix socket."""
 
+from __future__ import annotations
+
 import json
 from typing import Any
 

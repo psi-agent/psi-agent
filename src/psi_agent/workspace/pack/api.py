@@ -1,5 +1,7 @@
 """Pack API for creating squashfs from workspace directory."""
 
+from __future__ import annotations
+
 import asyncio
 import tempfile
 from pathlib import Path

@@ -1,5 +1,7 @@
 """Snapshot API for creating workspace snapshots."""
 
+from __future__ import annotations
+
 import asyncio
 import shutil
 import tempfile
