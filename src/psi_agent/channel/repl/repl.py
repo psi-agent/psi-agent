@@ -19,7 +19,6 @@ class Repl:
         """
         self.config = config
         self.client = ReplClient(config)
-        self.history: list[dict[str, str]] = []
         self._session: PromptSession[None] | None = None
 
     async def run(self) -> None:
@@ -50,17 +49,11 @@ class Repl:
                     if not user_input.strip():
                         continue
 
-                    # Add user message to history
-                    self.history.append({"role": "user", "content": user_input})
-
                     # Send to session and get response
-                    response = await self.client.send_message(self.history)
+                    response = await self.client.send_message(user_input)
 
                     # Display response
                     print(f"\n{response}\n")
-
-                    # Add assistant response to history
-                    self.history.append({"role": "assistant", "content": response})
 
                 except KeyboardInterrupt:
                     print("\n\nInterrupted. Type /quit or press Ctrl+D to exit.\n")

@@ -39,11 +39,11 @@ class ReplClient:
             await self._connector.close()
             self._connector = None
 
-    async def send_message(self, messages: list[dict[str, str]]) -> str:
-        """Send messages to psi-session and return the response.
+    async def send_message(self, message: str) -> str:
+        """Send a message to psi-session and return the response.
 
         Args:
-            messages: List of messages in OpenAI chat format.
+            message: The user message string to send.
 
         Returns:
             The assistant's response content.
@@ -58,11 +58,11 @@ class ReplClient:
         url = "http://localhost/v1/chat/completions"
         headers = {"Content-Type": "application/json"}
         body = {
-            "messages": messages,
+            "messages": [{"role": "user", "content": message}],
             "stream": False,
         }
 
-        logger.debug(f"Sending {len(messages)} messages to session")
+        logger.debug("Sending message to session")
 
         try:
             async with self._session.post(url, headers=headers, json=body) as response:
