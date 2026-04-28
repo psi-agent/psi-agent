@@ -1,11 +1,4 @@
-## ADDED Requirements
-
-### Requirement: README.md exists with user-facing content
-The project SHALL have a README.md file in the root directory that provides a user-friendly introduction to the project.
-
-#### Scenario: User views README.md
-- **WHEN** a user opens the repository or PyPI page
-- **THEN** they see a README.md with project introduction, installation instructions, and quick start guide
+## MODIFIED Requirements
 
 ### Requirement: README.md contains essential sections
 The README.md SHALL include the following sections:
@@ -22,12 +15,7 @@ The README.md SHALL include the following sections:
 - **THEN** they can quickly understand what psi-agent is, how to install it, and how to get started
 - **AND** they can switch to the Chinese version via the language link
 
-### Requirement: pyproject.toml references README.md
-The pyproject.toml file SHALL reference README.md in the `readme` field.
-
-#### Scenario: PyPI displays README.md
-- **WHEN** the package is published to PyPI
-- **THEN** the README.md content is displayed on the package page
+## ADDED Requirements
 
 ### Requirement: Chinese README uses common naming convention
 The Chinese README SHALL be named `README_zh.md` following common conventions.
