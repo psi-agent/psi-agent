@@ -81,7 +81,10 @@ class Repl:
         try:
             # Use prompt-toolkit's async prompt with multiline support
             # Enter submits, Alt+Enter or Escape+Enter inserts newline
-            result = await self._session.prompt_async("> ", multiline=True)
+            # Continuation prompt (. ) for lines after the first
+            result = await self._session.prompt_async(
+                "> ", multiline=True, prompt_continuation=". "
+            )
             return result
         except EOFError:
             return None
