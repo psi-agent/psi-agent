@@ -14,7 +14,7 @@ __all__ = ["Commands"]
 class Commands:
     """Channel commands."""
 
-    subcommand: Annotated[Cli | Repl, OmitSubcommandPrefixes]
+    subcommand: Annotated[Cli | Repl | Telegram, OmitSubcommandPrefixes]
 
     def __call__(self) -> None:
         self.subcommand()
@@ -23,3 +23,4 @@ class Commands:
 # Import after class definition to avoid circular imports
 from psi_agent.channel.cli.cli import Cli  # noqa: E402
 from psi_agent.channel.repl.cli import Repl  # noqa: E402
+from psi_agent.channel.telegram.cli import Telegram  # noqa: E402
