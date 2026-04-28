@@ -21,6 +21,46 @@ from psi_agent.session.types import History, ToolRegistry
 from psi_agent.session.workspace_watcher import ChangeSummary, WorkspaceWatcher
 
 
+async def _load_system(workspace: Path) -> Any:
+    """Load System class from workspace systems.
+
+    Args:
+        workspace: Path to workspace directory.
+
+    Returns:
+        System instance, or None if not available.
+    """
+    system_file = workspace / "systems" / "system.py"
+    if not await anyio.Path(system_file).exists():
+        logger.debug("No systems/system.py found, skipping system prompt")
+        return None
+
+    try:
+        # Dynamic import
+        spec = importlib.util.spec_from_file_location("system", system_file)
+        if spec is None or spec.loader is None:
+            logger.error(f"Failed to create spec for {system_file}")
+            return None
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["system"] = module
+        spec.loader.exec_module(module)
+
+        # Check for System class
+        if not hasattr(module, "System"):
+            logger.warning("No System class in system.py")
+            return None
+
+        # Instantiate System class
+        system_instance = module.System(workspace)
+        logger.debug("Loaded System instance from workspace")
+        return system_instance
+
+    except Exception as e:
+        logger.error(f"Failed to load System class: {e}")
+        return None
+
+
 async def load_system_prompt(workspace: Path) -> str | None:
     """Load system prompt from workspace systems.
 
@@ -76,6 +116,7 @@ class SessionRunner:
         self._system_prompt_cache: str | None = None
         self._watcher: WorkspaceWatcher | None = None
         self._schedule_executor: ScheduleExecutor | None = None
+        self._system: Any = None  # System instance from workspace
 
     async def __aenter__(self) -> SessionRunner:
         """Initialize session resources."""
@@ -91,8 +132,14 @@ class SessionRunner:
         await load_all_tools(tools_dir, self.registry)
         logger.info(f"Loaded {len(self.registry.tools)} tools")
 
+        # Load System instance
+        self._system = await _load_system(self.config.workspace_path())
+
         # Load system prompt
-        self._system_prompt_cache = await load_system_prompt(self.config.workspace_path())
+        if self._system is not None:
+            self._system_prompt_cache = await self._system.build_system_prompt()
+        else:
+            self._system_prompt_cache = None
 
         # Initialize HTTP client for psi-ai
         connector = aiohttp.UnixConnector(path=str(self.config.ai_socket_path()))
@@ -129,7 +176,10 @@ class SessionRunner:
         # Handle skill/schedule changes - rebuild system prompt
         if changes.skills_changed or changes.schedules_changed:
             logger.info("Rebuilding system prompt due to workspace changes")
-            self._system_prompt_cache = await load_system_prompt(self.config.workspace_path())
+            if self._system is not None:
+                self._system_prompt_cache = await self._system.build_system_prompt()
+            else:
+                self._system_prompt_cache = None
 
         # Handle schedule changes
         if changes.schedules_changed and self._schedule_executor is not None:
@@ -164,6 +214,36 @@ class SessionRunner:
 
         return await load_schedule(task_dir)
 
+    async def _complete_fn(self, messages: list[dict[str, Any]]) -> str:
+        """Complete function for LLM-based summarization.
+
+        Args:
+            messages: Messages to send to LLM for single-turn completion.
+
+        Returns:
+            LLM response string.
+        """
+        assert self.client is not None
+
+        request_body = {
+            "model": "session",  # Model is determined by psi-ai
+            "messages": messages,
+        }
+
+        async with self.client.post(
+            "http://localhost/v1/chat/completions",
+            json=request_body,
+        ) as response:
+            if response.status != 200:
+                text = await response.text()
+                logger.error(f"Complete fn request failed: {response.status} - {text}")
+                return ""
+
+            result = await response.json()
+            choice = result.get("choices", [{}])[0]
+            message = choice.get("message", {})
+            return message.get("content", "")
+
     async def process_request(self, user_message: dict[str, Any]) -> dict[str, Any]:
         """Process a user request and return response.
 
@@ -186,7 +266,7 @@ class SessionRunner:
         self.history.add_message(user_message)
 
         # Build messages for LLM
-        messages = self._build_messages()
+        messages = await self._build_messages()
 
         # Call psi-ai and handle tool calls
         response = await self._run_conversation(messages)
@@ -196,7 +276,7 @@ class SessionRunner:
 
         return response
 
-    def _build_messages(self) -> list[dict[str, Any]]:
+    async def _build_messages(self) -> list[dict[str, Any]]:
         """Build messages list for LLM request.
 
         Returns:
@@ -210,8 +290,16 @@ class SessionRunner:
         if self._system_prompt_cache:
             messages.append({"role": "system", "content": self._system_prompt_cache})
 
-        # Add history
-        messages.extend(self.history.messages)
+        # Compact history if System instance is available
+        if self._system is not None:
+            compacted = await self._system.compact_history(
+                self.history.messages,
+                self._complete_fn,
+            )
+            messages.extend(compacted)
+        else:
+            # Add history without compaction
+            messages.extend(self.history.messages)
 
         return messages
 
@@ -317,7 +405,7 @@ class SessionRunner:
         self.history.add_message(user_message)
 
         # Build messages for LLM
-        messages = self._build_messages()
+        messages = await self._build_messages()
 
         # For streaming, we need to handle tool calls differently
         # This implementation handles non-streaming for tool calls, then streams final response
