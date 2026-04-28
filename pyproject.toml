@@ -27,6 +27,11 @@ psi-ai-anthropic-messages = "psi_agent.ai.anthropic_messages.cli:main"
 psi-ai-openai-completions = "psi_agent.ai.openai_completions.cli:main"
 psi-session = "psi_agent.session.cli:main"
 psi-channel-cli = "psi_agent.channel.cli:main"
+psi-workspace-pack = "psi_agent.workspace.pack.cli:main"
+psi-workspace-unpack = "psi_agent.workspace.unpack.cli:main"
+psi-workspace-mount = "psi_agent.workspace.mount.cli:main"
+psi-workspace-umount = "psi_agent.workspace.umount.cli:main"
+psi-workspace-snapshot = "psi_agent.workspace.snapshot.cli:main"
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
