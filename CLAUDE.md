@@ -73,13 +73,76 @@ Agent 流程：
 
 ### psi-workspace-* 组件
 
-Workspace 管理器。
+Workspace 管理器，提供五个独立的 CLI 工具：
 
-职责：
-- 将 workspace 打包成 squashfs 或 overlayfs
-- 管理挂载
+| 组件 | 职责 |
+|------|------|
+| psi-workspace-pack | 将 workspace 目录打包成 squashfs 镜像 |
+| psi-workspace-unpack | 将 squashfs 镜像解压成目录 |
+| psi-workspace-mount | 将 squashfs 镜像挂载成 overlayfs |
+| psi-workspace-umount | 卸载已挂载的 workspace |
+| psi-workspace-snapshot | 创建 workspace 快照 |
 
-**注意：具体设计待定，未来有新信息时需在此更新。**
+**注意：这些组件需要 root 权限执行 mount/umount 操作。**
+
+#### Squashfs 镜像结构
+
+```
+workspace.squashfs
+├── manifest.json          # 元信息配置
+├── <uuid-1>/              # 基础层（第一次 pack 的目录内容）
+├── <uuid-2>/              # 第一次 snapshot 添加的层
+├── <uuid-3>/              # 第二次 snapshot 添加的层
+└── ...
+```
+
+#### Manifest.json 结构
+
+```json
+{
+  "layers": {
+    "<uuid-1>": { "tag": "v1.0" },
+    "<uuid-2>": { "parent": "<uuid-1>", "tag": "v1.1" },
+    "<uuid-3>": { "parent": "<uuid-2>" }
+  },
+  "default": "<uuid-3>"
+}
+```
+
+**字段说明：**
+- `layers`: 所有层的定义，key 为 UUID
+  - `parent`: 可选，父层 UUID（根层无 parent）
+  - `tag`: 可选，人类可读的标签
+- `default`: 默认挂载的层 UUID
+
+#### CLI 使用示例
+
+**打包 workspace：**
+```bash
+sudo psi-workspace-pack --input ./workspace --output ./workspace.squashfs --tag v1.0
+```
+
+**挂载 workspace：**
+```bash
+sudo psi-workspace-mount --input ./workspace.squashfs --output ./mounted-workspace
+# 或指定特定层
+sudo psi-workspace-mount --input ./workspace.squashfs --output ./mounted-workspace --layer v1.0
+```
+
+**创建快照：**
+```bash
+sudo psi-workspace-snapshot --input ./workspace.squashfs --mount-point ./mounted-workspace --tag v1.1
+```
+
+**卸载 workspace：**
+```bash
+sudo psi-workspace-umount --mount-point ./mounted-workspace
+```
+
+**解压 squashfs：**
+```bash
+psi-workspace-unpack --input ./workspace.squashfs --output ./extracted-workspace
+```
 
 ## Workspace 结构
 
