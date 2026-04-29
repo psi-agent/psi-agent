@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
-from unittest.mock import AsyncMock, MagicMock
+from collections.abc import AsyncGenerator
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -124,8 +126,6 @@ async def test_handle_chat_completions_invalid_json(config):
     server.runner = SessionRunner(config)
 
     # Create mock request that raises JSONDecodeError
-    import json
-
     mock_request = MagicMock()
 
     async def raise_json_error():
@@ -180,3 +180,123 @@ async def test_handle_other_returns_404(config):
 
     response = await server._handle_other(mock_request)
     assert response.status == 404
+
+
+class TestHandleChatCompletionsWithRunner:
+    """Tests for chat completions with initialized runner."""
+
+    @pytest.mark.asyncio
+    async def test_handle_valid_request(self, config):
+        """Test handling valid request with runner."""
+        server = SessionServer(config)
+        from psi_agent.session.runner import SessionRunner
+
+        # Create runner and use patch.object to mock process_request
+        runner = SessionRunner(config)
+        server.runner = runner
+
+        mock_process_request = AsyncMock(
+            return_value={
+                "choices": [{"message": {"role": "assistant", "content": "Hello!"}}],
+                "model": "session",
+            }
+        )
+
+        mock_request = MagicMock()
+        mock_request.json = AsyncMock(
+            return_value={"messages": [{"role": "user", "content": "Hi"}]}
+        )
+
+        with patch.object(runner, "process_request", mock_process_request):
+            response = await server._handle_chat_completions(mock_request)
+            assert response.status == 200
+
+    @pytest.mark.asyncio
+    async def test_handle_request_with_exception(self, config):
+        """Test handling request when runner raises exception."""
+        server = SessionServer(config)
+        from aiohttp import web
+
+        from psi_agent.session.runner import SessionRunner
+
+        runner = SessionRunner(config)
+        server.runner = runner
+
+        mock_process_request = AsyncMock(side_effect=Exception("Test error"))
+
+        mock_request = MagicMock()
+        mock_request.json = AsyncMock(
+            return_value={"messages": [{"role": "user", "content": "Hi"}]}
+        )
+
+        with patch.object(runner, "process_request", mock_process_request):
+            response = await server._handle_chat_completions(mock_request)
+            assert response.status == 500
+            assert isinstance(response, web.Response)
+            assert response.text is not None
+            assert "Test error" in response.text
+
+    @pytest.mark.asyncio
+    async def test_handle_streaming_request(self, config):
+        """Test handling streaming request."""
+        server = SessionServer(config)
+        from psi_agent.session.runner import SessionRunner
+
+        async def mock_stream() -> AsyncGenerator[str]:
+            yield "data: chunk1\n\n"
+            yield "data: [DONE]\n\n"
+
+        runner = SessionRunner(config)
+        server.runner = runner
+
+        mock_process_streaming_request = AsyncMock(return_value=mock_stream())
+
+        mock_request = MagicMock()
+        mock_request.json = AsyncMock(
+            return_value={"messages": [{"role": "user", "content": "Hi"}], "stream": True}
+        )
+
+        # Mock StreamResponse
+        with patch("psi_agent.session.server.web.StreamResponse") as mock_sr:
+            mock_response = MagicMock()
+            mock_response.prepare = AsyncMock()
+            mock_response.write = AsyncMock()
+            mock_sr.return_value = mock_response
+
+            with patch.object(runner, "process_streaming_request", mock_process_streaming_request):
+                response = await server._handle_chat_completions(mock_request)
+                assert response.content_type == "text/event-stream"
+
+    @pytest.mark.asyncio
+    async def test_handle_streaming_with_dict_response(self, config):
+        """Test handling streaming request that returns dict (tool calls involved)."""
+        server = SessionServer(config)
+        from psi_agent.session.runner import SessionRunner
+
+        runner = SessionRunner(config)
+        server.runner = runner
+
+        # process_streaming_request can return dict when tool calls are involved
+        mock_process_streaming_request = AsyncMock(
+            return_value={
+                "choices": [{"message": {"role": "assistant", "content": "Result"}}],
+                "model": "session",
+            }
+        )
+
+        mock_request = MagicMock()
+        mock_request.json = AsyncMock(
+            return_value={"messages": [{"role": "user", "content": "Hi"}], "stream": True}
+        )
+
+        with patch("psi_agent.session.server.web.StreamResponse") as mock_sr:
+            mock_response = MagicMock()
+            mock_response.prepare = AsyncMock()
+            mock_response.write = AsyncMock()
+            mock_sr.return_value = mock_response
+
+            with patch.object(runner, "process_streaming_request", mock_process_streaming_request):
+                response = await server._handle_chat_completions(mock_request)
+                assert response.content_type == "text/event-stream"
+                # Verify write was called with the filtered response
+                mock_response.write.assert_called()
