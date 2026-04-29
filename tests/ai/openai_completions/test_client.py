@@ -7,6 +7,7 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from openai import APIConnectionError, APITimeoutError, AuthenticationError, RateLimitError
 
 from psi_agent.ai.openai_completions.client import OpenAICompletionsClient
 from psi_agent.ai.openai_completions.config import OpenAICompletionsConfig
@@ -133,8 +134,6 @@ class TestOpenAICompletionsClient:
     @pytest.mark.asyncio
     async def test_authentication_error(self, client: OpenAICompletionsClient) -> None:
         """Test authentication error handling."""
-        from openai import AuthenticationError
-
         with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:
             mock_instance = AsyncMock()
             mock_instance.chat.completions.create = AsyncMock(
@@ -164,8 +163,6 @@ class TestOpenAICompletionsClient:
     @pytest.mark.asyncio
     async def test_rate_limit_error(self, client: OpenAICompletionsClient) -> None:
         """Test rate limit error handling."""
-        from openai import RateLimitError
-
         with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:
             mock_instance = AsyncMock()
             mock_instance.chat.completions.create = AsyncMock(
@@ -195,8 +192,6 @@ class TestOpenAICompletionsClient:
     @pytest.mark.asyncio
     async def test_connection_error(self, client: OpenAICompletionsClient) -> None:
         """Test connection error handling."""
-        from openai import APIConnectionError
-
         with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:
             mock_instance = AsyncMock()
             mock_instance.chat.completions.create = AsyncMock(
@@ -222,8 +217,6 @@ class TestOpenAICompletionsClient:
     @pytest.mark.asyncio
     async def test_timeout_error(self, client: OpenAICompletionsClient) -> None:
         """Test timeout error handling."""
-        from openai import APITimeoutError
-
         with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:
             mock_instance = AsyncMock()
             mock_instance.chat.completions.create = AsyncMock(

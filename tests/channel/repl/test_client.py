@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import aiohttp
 import pytest
 
 from psi_agent.channel.repl.client import ReplClient
@@ -131,8 +132,6 @@ class TestReplClient:
     @pytest.mark.asyncio
     async def test_send_message_connection_error(self, client: ReplClient) -> None:
         """Test handling connection error."""
-        import aiohttp
-
         with (
             patch("aiohttp.UnixConnector") as mock_connector,
             patch("aiohttp.ClientSession") as mock_session,

@@ -6,6 +6,7 @@ from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from anthropic import APIConnectionError, AuthenticationError, RateLimitError
 
 from psi_agent.ai.anthropic_messages.client import AnthropicMessagesClient
 from psi_agent.ai.anthropic_messages.config import AnthropicMessagesConfig
@@ -179,8 +180,6 @@ class TestAnthropicMessagesClient:
     @pytest.mark.asyncio
     async def test_authentication_error(self, client: AnthropicMessagesClient) -> None:
         """Test authentication error handling."""
-        from anthropic import AuthenticationError
-
         with patch("psi_agent.ai.anthropic_messages.client.AsyncAnthropic") as mock_anthropic:
             mock_instance = AsyncMock()
             mock_instance.messages.create = AsyncMock(
@@ -210,8 +209,6 @@ class TestAnthropicMessagesClient:
     @pytest.mark.asyncio
     async def test_rate_limit_error(self, client: AnthropicMessagesClient) -> None:
         """Test rate limit error handling."""
-        from anthropic import RateLimitError
-
         with patch("psi_agent.ai.anthropic_messages.client.AsyncAnthropic") as mock_anthropic:
             mock_instance = AsyncMock()
             mock_instance.messages.create = AsyncMock(
@@ -241,8 +238,6 @@ class TestAnthropicMessagesClient:
     @pytest.mark.asyncio
     async def test_connection_error(self, client: AnthropicMessagesClient) -> None:
         """Test connection error handling."""
-        from anthropic import APIConnectionError
-
         with patch("psi_agent.ai.anthropic_messages.client.AsyncAnthropic") as mock_anthropic:
             mock_instance = AsyncMock()
             mock_instance.messages.create = AsyncMock(

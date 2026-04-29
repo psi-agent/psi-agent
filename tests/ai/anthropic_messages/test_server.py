@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -51,8 +52,6 @@ class TestAnthropicMessagesServer:
         request.json = AsyncMock(side_effect=Exception("Invalid JSON"))
 
         # Patch json.JSONDecodeError handling
-        import json
-
         request.json = AsyncMock(side_effect=json.JSONDecodeError("test", "test", 0))
 
         response = await server._handle_chat_completions(request)
