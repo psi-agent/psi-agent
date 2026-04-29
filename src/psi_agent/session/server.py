@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from collections.abc import AsyncGenerator
+from typing import Any, cast
 
 import anyio
 from aiohttp import web
@@ -137,11 +138,11 @@ class SessionServer:
 
         # Handle both async generator and dict response
         if hasattr(stream_gen, "__aiter__"):
-            async for chunk in stream_gen:  # ty: ignore[not-iterable]
+            async for chunk in cast(AsyncGenerator[str], stream_gen):
                 await response.write(chunk.encode())
         else:
             # Non-streaming result (tool calls were involved)
-            result = stream_gen
+            result = cast(dict[str, Any], stream_gen)
             channel_response = self._filter_for_channel(result)
             data = json.dumps(channel_response)
             await response.write(f"data: {data}\n\n".encode())
