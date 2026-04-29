@@ -36,13 +36,15 @@ uv add psi-agent
 
 ## 快速开始
 
-1. 创建 workspace 目录，包含你的 tools 和 skills：
+1. 创建 workspace 目录，包含你的 tools 和 skills（或使用 `examples/` 中的示例）：
 
 ```bash
 mkdir -p workspace/{tools,skills,systems}
 ```
 
-2. 启动 session 和 AI provider：
+参见 `examples/a-simple-bash-only-workspace/` 了解最小示例，或 `examples/an-openclaw-like-workspace/` 了解更完整的配置。
+
+2. 启动 session：
 
 ```bash
 psi-agent session \
@@ -51,7 +53,7 @@ psi-agent session \
   --ai-socket ./ai.sock
 ```
 
-3. 启动 AI 组件（例如 OpenAI 兼容接口）：
+3. 启动 AI provider（例如 OpenAI 兼容接口）：
 
 ```bash
 psi-agent ai openai-completions \
@@ -61,7 +63,7 @@ psi-agent ai openai-completions \
   --base-url <提供商-api-url>  # 例如 https://openrouter.ai/api/v1
 ```
 
-4. 启动 channel 与 agent 交互：
+4. 启动 channel 与 agent session 交互：
 
 ```bash
 psi-agent channel repl --session-socket ./channel.sock

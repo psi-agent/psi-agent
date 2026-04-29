@@ -36,13 +36,15 @@ uv add psi-agent
 
 ## Quick Start
 
-1. Create a workspace directory with your tools and skills:
+1. Create a workspace directory with your tools and skills (or use an example from `examples/`):
 
 ```bash
 mkdir -p workspace/{tools,skills,systems}
 ```
 
-2. Start the session with an AI provider:
+See `examples/a-simple-bash-only-workspace/` for a minimal example, or `examples/an-openclaw-like-workspace/` for a more complete setup.
+
+2. Start the session:
 
 ```bash
 psi-agent session \
@@ -51,7 +53,7 @@ psi-agent session \
   --ai-socket ./ai.sock
 ```
 
-3. Start an AI component (e.g., OpenAI-compatible):
+3. Start an AI provider (e.g., OpenAI-compatible):
 
 ```bash
 psi-agent ai openai-completions \
@@ -61,7 +63,7 @@ psi-agent ai openai-completions \
   --base-url <provider-api-url>  # e.g., https://openrouter.ai/api/v1
 ```
 
-4. Start a channel to interact with your agent:
+4. Start a channel to interact with your agent session:
 
 ```bash
 psi-agent channel repl --session-socket ./channel.sock
