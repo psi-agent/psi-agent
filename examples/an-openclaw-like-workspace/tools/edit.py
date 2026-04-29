@@ -1,5 +1,7 @@
 """Edit file content with exact string replacement."""
 
+from __future__ import annotations
+
 import anyio
 
 

@@ -1,5 +1,7 @@
 """Async system configuration for the workspace."""
 
+from __future__ import annotations
+
 import re
 from collections.abc import Awaitable, Callable
 from typing import Any

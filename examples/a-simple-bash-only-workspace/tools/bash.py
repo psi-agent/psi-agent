@@ -1,5 +1,7 @@
 """Async bash tool for executing shell commands."""
 
+from __future__ import annotations
+
 import asyncio
 
 import anyio
