@@ -1,4 +1,4 @@
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Alpha tag triggers PyPI publish
 The `auto-alpha-tag.yml` workflow SHALL include a `publish` job that publishes the package to PyPI when a new alpha tag is successfully created.
@@ -14,17 +14,3 @@ The `auto-alpha-tag.yml` workflow SHALL include a `publish` job that publishes t
 #### Scenario: Output naming consistency
 - **WHEN** the `create-tag` step sets outputs
 - **THEN** the outputs SHALL use consistent naming: `tag-created` and `tag-name`
-
-### Requirement: Publish job uses trusted publishing
-The `publish` job in `auto-alpha-tag.yml` SHALL use the same trusted publishing mechanism as `ci.yml` (OIDC token with PyPI).
-
-#### Scenario: Trusted publishing configuration
-- **WHEN** the `publish` job runs
-- **THEN** it SHALL use `uv publish` with OIDC authentication via the `pypi` environment
-
-### Requirement: Publish job depends on auto-tag
-The `publish` job SHALL have `needs: [auto-tag]` dependency to ensure it only runs after tag creation.
-
-#### Scenario: Job ordering
-- **WHEN** the workflow runs
-- **THEN** the `publish` job SHALL wait for the `auto-tag` job to complete before starting
