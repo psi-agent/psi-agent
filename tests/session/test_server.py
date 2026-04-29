@@ -9,8 +9,10 @@ from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from aiohttp import web
 
 from psi_agent.session.config import SessionConfig
+from psi_agent.session.runner import SessionRunner
 from psi_agent.session.server import SessionServer
 
 
@@ -121,8 +123,6 @@ async def test_handle_chat_completions_invalid_json(config):
     """Test handling request with invalid JSON."""
     server = SessionServer(config)
     # Set runner to avoid "not ready" error
-    from psi_agent.session.runner import SessionRunner
-
     server.runner = SessionRunner(config)
 
     # Create mock request that raises JSONDecodeError
@@ -141,8 +141,6 @@ async def test_handle_chat_completions_invalid_json(config):
 async def test_handle_chat_completions_no_messages(config):
     """Test handling request with no messages."""
     server = SessionServer(config)
-    from psi_agent.session.runner import SessionRunner
-
     server.runner = SessionRunner(config)
 
     mock_request = MagicMock()
@@ -156,8 +154,6 @@ async def test_handle_chat_completions_no_messages(config):
 async def test_handle_chat_completions_no_user_message(config):
     """Test handling request with no user message."""
     server = SessionServer(config)
-    from psi_agent.session.runner import SessionRunner
-
     server.runner = SessionRunner(config)
 
     mock_request = MagicMock()
@@ -189,7 +185,6 @@ class TestHandleChatCompletionsWithRunner:
     async def test_handle_valid_request(self, config):
         """Test handling valid request with runner."""
         server = SessionServer(config)
-        from psi_agent.session.runner import SessionRunner
 
         # Create runner and use patch.object to mock process_request
         runner = SessionRunner(config)
@@ -215,9 +210,6 @@ class TestHandleChatCompletionsWithRunner:
     async def test_handle_request_with_exception(self, config):
         """Test handling request when runner raises exception."""
         server = SessionServer(config)
-        from aiohttp import web
-
-        from psi_agent.session.runner import SessionRunner
 
         runner = SessionRunner(config)
         server.runner = runner
@@ -240,7 +232,6 @@ class TestHandleChatCompletionsWithRunner:
     async def test_handle_streaming_request(self, config):
         """Test handling streaming request."""
         server = SessionServer(config)
-        from psi_agent.session.runner import SessionRunner
 
         async def mock_stream() -> AsyncGenerator[str]:
             yield "data: chunk1\n\n"
@@ -271,7 +262,6 @@ class TestHandleChatCompletionsWithRunner:
     async def test_handle_streaming_with_dict_response(self, config):
         """Test handling streaming request that returns dict (tool calls involved)."""
         server = SessionServer(config)
-        from psi_agent.session.runner import SessionRunner
 
         runner = SessionRunner(config)
         server.runner = runner

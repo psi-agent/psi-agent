@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+from unittest.mock import patch
 
 import anyio
 import pytest
@@ -167,8 +168,6 @@ async def test_load_history_nonexistent_file():
 async def test_load_history_permission_error():
     """Test loading history when permission denied."""
     # Mock the permission error scenario
-    from unittest.mock import patch
-
     with tempfile.TemporaryDirectory() as tmpdir:
         history_file = anyio.Path(tmpdir) / "history.json"
         await history_file.write_text('[{"role": "user", "content": "test"}]')
@@ -182,8 +181,6 @@ async def test_load_history_permission_error():
 @pytest.mark.asyncio
 async def test_save_history_write_error():
     """Test saving history when write fails."""
-    from unittest.mock import patch
-
     with tempfile.TemporaryDirectory() as tmpdir:
         history_file = anyio.Path(tmpdir) / "history.json"
         history = History(
