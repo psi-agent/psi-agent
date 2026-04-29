@@ -1,5 +1,7 @@
 """Async system configuration for the workspace."""
 
+from __future__ import annotations
+
 import os
 import platform
 import sys
