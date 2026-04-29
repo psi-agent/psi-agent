@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import anyio
 
 from psi_agent.ai.openai_completions.config import OpenAICompletionsConfig
 
@@ -34,7 +34,7 @@ def test_config_default_base_url() -> None:
 
 
 def test_socket_path() -> None:
-    """Test socket_path method returns Path object."""
+    """Test socket_path method returns anyio.Path object."""
     config = OpenAICompletionsConfig(
         session_socket="/tmp/test.sock",
         model="gpt-4",
@@ -42,5 +42,5 @@ def test_socket_path() -> None:
     )
 
     path = config.socket_path()
-    assert isinstance(path, Path)
-    assert path == Path("/tmp/test.sock")
+    assert isinstance(path, anyio.Path)
+    assert path == anyio.Path("/tmp/test.sock")

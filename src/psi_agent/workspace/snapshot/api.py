@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import shutil
 import tempfile
-from pathlib import Path
 from uuid import uuid4
 
 import anyio
@@ -21,8 +20,8 @@ class SnapshotError(Exception):
 
 
 async def snapshot(
-    input_file: str | Path,
-    mount_point: str | Path,
+    input_file: str | anyio.Path,
+    mount_point: str | anyio.Path,
     output_file: str | None = None,
     tag: str | None = None,
 ) -> None:
@@ -37,24 +36,24 @@ async def snapshot(
     Raises:
         SnapshotError: If snapshot operation fails.
     """
-    input_path = Path(await anyio.Path(input_file).resolve())
-    mount_path = Path(await anyio.Path(mount_point).resolve())
+    input_path = anyio.Path(await anyio.Path(input_file).resolve())
+    mount_path = anyio.Path(await anyio.Path(mount_point).resolve())
 
     # Validate inputs
-    if not await anyio.Path(input_path).exists():
+    if not await input_path.exists():
         raise SnapshotError(f"Input file does not exist: {input_path}")
-    if not await anyio.Path(mount_path).exists():
+    if not await mount_path.exists():
         raise SnapshotError(f"Mount point does not exist: {mount_path}")
 
     # Determine output path
-    output_path = Path(await anyio.Path(output_file).resolve()) if output_file else input_path
+    output_path = anyio.Path(await anyio.Path(output_file).resolve()) if output_file else input_path
 
     logger.info(f"Creating snapshot from {mount_path} to {output_path}")
     logger.debug(f"Input: {input_path}, Tag: {tag}")
 
     # Read mount info to get upper directory
     mount_info_path = mount_path / ".psi-mount-info"
-    if not await anyio.Path(mount_info_path).exists():
+    if not await mount_info_path.exists():
         raise SnapshotError(f"Mount info file not found: {mount_info_path}")
 
     async with await anyio.open_file(mount_info_path) as f:
@@ -67,11 +66,11 @@ async def snapshot(
     except (SyntaxError, ValueError) as e:
         raise SnapshotError(f"Invalid mount info: {e}") from e
 
-    upper_dir = Path(mount_info["upper_dir"])
+    upper_dir = anyio.Path(mount_info["upper_dir"])
 
     # Check if there are any changes
     has_changes = False
-    async for _ in anyio.Path(upper_dir).iterdir():
+    async for _ in upper_dir.iterdir():
         has_changes = True
         break
     if not has_changes:
@@ -97,14 +96,14 @@ async def snapshot(
 
     # Create temporary directory for staging
     with tempfile.TemporaryDirectory() as temp_dir:
-        temp_path = Path(temp_dir)
+        temp_path = anyio.Path(temp_dir)
 
         # Copy squashfs contents to temp directory
         await _extract_squashfs(input_path, temp_path)
 
         # Copy upper directory as new layer
         new_layer_dir = temp_path / str(new_layer_uuid)
-        await _copy_directory(Path(upper_dir), new_layer_dir)
+        await _copy_directory(upper_dir, new_layer_dir)
 
         # Write updated manifest
         manifest_path = temp_path / "manifest.json"
@@ -117,7 +116,7 @@ async def snapshot(
         await _create_squashfs(temp_path, temp_squashfs)
 
         # Atomic move to output path
-        if await anyio.Path(output_path).exists():
+        if await output_path.exists():
             # Create temp file in same directory for atomic move
             temp_output = output_path.with_suffix(".tmp")
             shutil.move(str(temp_squashfs), str(temp_output))
@@ -128,7 +127,7 @@ async def snapshot(
     logger.info(f"Successfully created snapshot at {output_path}")
 
 
-async def _read_manifest_from_squashfs(squashfs_file: Path) -> Manifest:
+async def _read_manifest_from_squashfs(squashfs_file: anyio.Path) -> Manifest:
     """Read manifest from squashfs file.
 
     Args:
@@ -138,7 +137,7 @@ async def _read_manifest_from_squashfs(squashfs_file: Path) -> Manifest:
         Manifest object.
     """
     with tempfile.TemporaryDirectory() as temp_dir:
-        temp_path = Path(temp_dir)
+        temp_path = anyio.Path(temp_dir)
 
         # Extract just the manifest.json
         cmd = ["unsquashfs", "-d", str(temp_path), str(squashfs_file), "manifest.json"]
@@ -150,7 +149,7 @@ async def _read_manifest_from_squashfs(squashfs_file: Path) -> Manifest:
         await process.communicate()
 
         manifest_path = temp_path / "manifest.json"
-        if not await anyio.Path(manifest_path).exists():
+        if not await manifest_path.exists():
             raise SnapshotError("manifest.json not found in squashfs")
 
         async with await anyio.open_file(manifest_path) as f:
@@ -159,7 +158,7 @@ async def _read_manifest_from_squashfs(squashfs_file: Path) -> Manifest:
         return parse_manifest(content)
 
 
-async def _extract_squashfs(squashfs_file: Path, output_dir: Path) -> None:
+async def _extract_squashfs(squashfs_file: anyio.Path, output_dir: anyio.Path) -> None:
     """Extract squashfs contents to directory.
 
     Args:
@@ -184,19 +183,19 @@ async def _extract_squashfs(squashfs_file: Path, output_dir: Path) -> None:
     logger.debug(f"unsquashfs output: {stderr.decode() if stderr else 'No output'}")
 
 
-async def _copy_directory(src: Path, dst: Path) -> None:
+async def _copy_directory(src: anyio.Path, dst: anyio.Path) -> None:
     """Copy directory contents.
 
     Args:
         src: Source directory.
         dst: Destination directory.
     """
-    await anyio.Path(dst).mkdir(parents=True, exist_ok=True)
+    await dst.mkdir(parents=True, exist_ok=True)
 
-    async for item in anyio.Path(src).iterdir():
+    async for item in src.iterdir():
         dest_item = dst / item.name
-        if await anyio.Path(item).is_dir():
-            await _copy_directory(Path(item), dest_item)
+        if await item.is_dir():
+            await _copy_directory(item, dest_item)
         else:
             async with await anyio.open_file(item, "rb") as src_file:
                 content = await src_file.read()
@@ -204,7 +203,7 @@ async def _copy_directory(src: Path, dst: Path) -> None:
                 await dst_file.write(content)
 
 
-async def _create_squashfs(src_dir: Path, output_file: Path) -> None:
+async def _create_squashfs(src_dir: anyio.Path, output_file: anyio.Path) -> None:
     """Create squashfs from directory.
 
     Args:

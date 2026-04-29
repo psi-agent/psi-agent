@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import tempfile
-from pathlib import Path
 from uuid import UUID
 
 import anyio
@@ -20,8 +19,8 @@ class MountError(Exception):
 
 
 async def mount(
-    input_file: str | Path,
-    output_dir: str | Path,
+    input_file: str | anyio.Path,
+    output_dir: str | anyio.Path,
     layer: str | None = None,
 ) -> None:
     """Mount a squashfs image as overlayfs to a directory.
@@ -34,13 +33,13 @@ async def mount(
     Raises:
         MountError: If mount operation fails.
     """
-    input_path = Path(await anyio.Path(input_file).resolve())
-    output_path = Path(await anyio.Path(output_dir).resolve())
+    input_path = anyio.Path(await anyio.Path(input_file).resolve())
+    output_path = anyio.Path(await anyio.Path(output_dir).resolve())
 
     # Validate input file
-    if not await anyio.Path(input_path).exists():
+    if not await input_path.exists():
         raise MountError(f"Input file does not exist: {input_path}")
-    if not await anyio.Path(input_path).is_file():
+    if not await input_path.is_file():
         raise MountError(f"Input path is not a file: {input_path}")
 
     logger.info(f"Mounting squashfs from {input_path} to {output_path}")
@@ -52,7 +51,7 @@ async def mount(
 
     # Read manifest
     manifest_path = squashfs_mount / "manifest.json"
-    if not await anyio.Path(manifest_path).exists():
+    if not await manifest_path.exists():
         raise MountError("manifest.json not found in squashfs")
 
     async with await anyio.open_file(manifest_path) as f:
@@ -76,7 +75,7 @@ async def mount(
     lowerdir = ":".join(lowerdirs)
 
     # Create output directory
-    await anyio.Path(output_path).mkdir(parents=True, exist_ok=True)
+    await output_path.mkdir(parents=True, exist_ok=True)
 
     # Mount overlayfs
     await _mount_overlayfs(output_path, lowerdir, upper_dir, work_dir)
@@ -130,7 +129,7 @@ def _resolve_target_layer(manifest: Manifest, layer: str | None) -> UUID:
     raise MountError(f"Layer '{layer}' not found. Available tags: {available_tags}")
 
 
-async def _create_temp_dir(prefix: str) -> Path:
+async def _create_temp_dir(prefix: str) -> anyio.Path:
     """Create a temporary directory.
 
     Args:
@@ -139,13 +138,13 @@ async def _create_temp_dir(prefix: str) -> Path:
     Returns:
         Path to the created directory.
     """
-    temp_base = Path(tempfile.gettempdir())
+    temp_base = anyio.Path(tempfile.gettempdir())
     temp_dir = temp_base / f"{prefix}{tempfile.mkdtemp(prefix='')}"
-    await anyio.Path(temp_dir).mkdir(parents=True, exist_ok=True)
+    await temp_dir.mkdir(parents=True, exist_ok=True)
     return temp_dir
 
 
-async def _mount_squashfs(squashfs_file: Path, mount_point: Path) -> None:
+async def _mount_squashfs(squashfs_file: anyio.Path, mount_point: anyio.Path) -> None:
     """Mount squashfs to directory.
 
     Args:
@@ -155,7 +154,7 @@ async def _mount_squashfs(squashfs_file: Path, mount_point: Path) -> None:
     Raises:
         MountError: If mount fails.
     """
-    await anyio.Path(mount_point).mkdir(parents=True, exist_ok=True)
+    await mount_point.mkdir(parents=True, exist_ok=True)
 
     cmd = ["mount", "-t", "squashfs", str(squashfs_file), str(mount_point), "-o", "loop"]
     logger.debug(f"Running: {' '.join(cmd)}")
@@ -176,10 +175,10 @@ async def _mount_squashfs(squashfs_file: Path, mount_point: Path) -> None:
 
 
 async def _mount_overlayfs(
-    mount_point: Path,
+    mount_point: anyio.Path,
     lowerdir: str,
-    upper_dir: Path,
-    work_dir: Path,
+    upper_dir: anyio.Path,
+    work_dir: anyio.Path,
 ) -> None:
     """Mount overlayfs to directory.
 
@@ -192,8 +191,8 @@ async def _mount_overlayfs(
     Raises:
         MountError: If mount fails.
     """
-    await anyio.Path(upper_dir).mkdir(parents=True, exist_ok=True)
-    await anyio.Path(work_dir).mkdir(parents=True, exist_ok=True)
+    await upper_dir.mkdir(parents=True, exist_ok=True)
+    await work_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = [
         "mount",

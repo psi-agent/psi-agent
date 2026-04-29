@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
+
+import anyio
 
 
 @dataclass
@@ -22,26 +23,26 @@ class SessionConfig:
     workspace: str
     history_file: str | None = None
 
-    def channel_socket_path(self) -> Path:
+    def channel_socket_path(self) -> anyio.Path:
         """Get channel socket path as Path object."""
-        return Path(self.channel_socket)
+        return anyio.Path(self.channel_socket)
 
-    def ai_socket_path(self) -> Path:
+    def ai_socket_path(self) -> anyio.Path:
         """Get AI socket path as Path object."""
-        return Path(self.ai_socket)
+        return anyio.Path(self.ai_socket)
 
-    def workspace_path(self) -> Path:
+    def workspace_path(self) -> anyio.Path:
         """Get workspace path as Path object."""
-        return Path(self.workspace)
+        return anyio.Path(self.workspace)
 
-    def history_file_path(self) -> Path | None:
+    def history_file_path(self) -> anyio.Path | None:
         """Get history file path as Path object, or None."""
-        return Path(self.history_file) if self.history_file else None
+        return anyio.Path(self.history_file) if self.history_file else None
 
-    def tools_dir(self) -> Path:
+    def tools_dir(self) -> anyio.Path:
         """Get tools directory path."""
         return self.workspace_path() / "tools"
 
-    def systems_dir(self) -> Path:
+    def systems_dir(self) -> anyio.Path:
         """Get systems directory path."""
         return self.workspace_path() / "systems"

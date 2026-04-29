@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import anyio
 
 from psi_agent.channel.telegram.config import TelegramConfig
 
@@ -16,10 +16,10 @@ def test_telegram_config_creation():
 
 
 def test_telegram_config_socket_path():
-    """Test socket_path returns Path object."""
+    """Test socket_path returns anyio.Path object."""
     config = TelegramConfig(token="test-token", session_socket="/tmp/test.sock")
 
     result = config.socket_path()
 
-    assert isinstance(result, Path)
-    assert result == Path("/tmp/test.sock")
+    assert isinstance(result, anyio.Path)
+    assert result == anyio.Path("/tmp/test.sock")

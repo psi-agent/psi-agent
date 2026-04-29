@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
+
+import anyio
 
 from psi_agent.session.schedule import Schedule
 
@@ -17,7 +18,7 @@ class TestCronParsing:
             name="test",
             cron="* * * * *",
             content="test",
-            task_dir=Path("/tmp"),
+            task_dir=anyio.Path("/tmp"),
         )
 
         next_run = schedule.get_next_run()
@@ -29,7 +30,7 @@ class TestCronParsing:
             name="test",
             cron="0 9 * * *",  # 9am daily
             content="test",
-            task_dir=Path("/tmp"),
+            task_dir=anyio.Path("/tmp"),
         )
 
         next_run = schedule.get_next_run()
@@ -42,7 +43,7 @@ class TestCronParsing:
             name="test",
             cron="0 9 * * 1",  # 9am every Monday
             content="test",
-            task_dir=Path("/tmp"),
+            task_dir=anyio.Path("/tmp"),
         )
 
         next_run = schedule.get_next_run()
@@ -57,7 +58,7 @@ class TestCronParsing:
             name="test",
             cron="0 9 15 * *",  # 9am on 15th of every month
             content="test",
-            task_dir=Path("/tmp"),
+            task_dir=anyio.Path("/tmp"),
         )
 
         next_run = schedule.get_next_run()
@@ -71,7 +72,7 @@ class TestCronParsing:
             name="test",
             cron="0 9 1 1 *",  # 9am on January 1st
             content="test",
-            task_dir=Path("/tmp"),
+            task_dir=anyio.Path("/tmp"),
         )
 
         next_run = schedule.get_next_run()
@@ -86,7 +87,7 @@ class TestCronParsing:
             name="test",
             cron="0 9,18 * * *",  # 9am and 6pm daily
             content="test",
-            task_dir=Path("/tmp"),
+            task_dir=anyio.Path("/tmp"),
         )
 
         next_run = schedule.get_next_run()
@@ -99,7 +100,7 @@ class TestCronParsing:
             name="test",
             cron="0 9-17 * * *",  # Every hour from 9am to 5pm
             content="test",
-            task_dir=Path("/tmp"),
+            task_dir=anyio.Path("/tmp"),
         )
 
         next_run = schedule.get_next_run()
@@ -112,7 +113,7 @@ class TestCronParsing:
             name="test",
             cron="*/15 * * * *",  # Every 15 minutes
             content="test",
-            task_dir=Path("/tmp"),
+            task_dir=anyio.Path("/tmp"),
         )
 
         next_run = schedule.get_next_run()

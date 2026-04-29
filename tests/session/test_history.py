@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
 
+import anyio
 import pytest
 
 from psi_agent.session.history import (
@@ -28,8 +28,8 @@ async def test_initialize_history_no_file():
 async def test_initialize_history_with_file():
     """Test history initialization with file."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        history_file = Path(tmpdir) / "history.json"
-        history_file.write_text('[{"role": "user", "content": "test"}]')
+        history_file = anyio.Path(tmpdir) / "history.json"
+        await history_file.write_text('[{"role": "user", "content": "test"}]')
 
         history = await initialize_history(str(history_file))
         assert len(history.messages) == 1
@@ -41,8 +41,8 @@ async def test_initialize_history_with_file():
 async def test_initialize_history_empty_file():
     """Test history initialization with empty file."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        history_file = Path(tmpdir) / "history.json"
-        history_file.write_text("")
+        history_file = anyio.Path(tmpdir) / "history.json"
+        await history_file.write_text("")
 
         history = await initialize_history(str(history_file))
         assert history.messages == []
@@ -52,8 +52,8 @@ async def test_initialize_history_empty_file():
 async def test_load_history_from_file_corrupted():
     """Test loading corrupted JSON file."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        history_file = Path(tmpdir) / "history.json"
-        history_file.write_text("not valid json")
+        history_file = anyio.Path(tmpdir) / "history.json"
+        await history_file.write_text("not valid json")
 
         messages = await load_history_from_file(history_file)
         assert messages == []
@@ -63,7 +63,7 @@ async def test_load_history_from_file_corrupted():
 async def test_save_history_to_file():
     """Test saving history to file."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        history_file = Path(tmpdir) / "history.json"
+        history_file = anyio.Path(tmpdir) / "history.json"
         history = History(
             messages=[{"role": "user", "content": "hello"}],
             history_file=str(history_file),
@@ -71,7 +71,7 @@ async def test_save_history_to_file():
 
         await save_history_to_file(history, history_file)
 
-        content = history_file.read_text()
+        content = await history_file.read_text()
         assert "hello" in content
         assert "user" in content
 
@@ -80,7 +80,7 @@ async def test_save_history_to_file():
 async def test_persist_history():
     """Test persist_history function."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        history_file = Path(tmpdir) / "history.json"
+        history_file = anyio.Path(tmpdir) / "history.json"
         history = History(
             messages=[{"role": "assistant", "content": "response"}],
             history_file=str(history_file),
@@ -88,8 +88,8 @@ async def test_persist_history():
 
         await persist_history(history)
 
-        assert history_file.exists()
-        content = history_file.read_text()
+        assert await history_file.exists()
+        content = await history_file.read_text()
         assert "response" in content
 
 
@@ -140,8 +140,8 @@ async def test_save_history_creates_parent_dirs():
     """Test saving history - parent dirs must exist."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Parent directories must exist - save_history_to_file doesn't create them
-        history_file = Path(tmpdir) / "subdir" / "history.json"
-        history_file.parent.mkdir(parents=True, exist_ok=True)
+        history_file = anyio.Path(tmpdir) / "subdir" / "history.json"
+        await history_file.parent.mkdir(parents=True, exist_ok=True)
 
         history = History(
             messages=[{"role": "user", "content": "test"}],
@@ -150,14 +150,14 @@ async def test_save_history_creates_parent_dirs():
 
         await save_history_to_file(history, history_file)
 
-        assert history_file.exists()
+        assert await history_file.exists()
 
 
 @pytest.mark.asyncio
 async def test_load_history_nonexistent_file():
     """Test loading from nonexistent file returns empty list."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        history_file = Path(tmpdir) / "nonexistent.json"
+        history_file = anyio.Path(tmpdir) / "nonexistent.json"
 
         messages = await load_history_from_file(history_file)
         assert messages == []

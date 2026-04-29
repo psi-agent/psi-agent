@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import tempfile
-from pathlib import Path
 from uuid import uuid4
 
 import anyio
@@ -20,8 +19,8 @@ class PackError(Exception):
 
 
 async def pack(
-    input_dir: str | Path,
-    output_file: str | Path,
+    input_dir: str | anyio.Path,
+    output_file: str | anyio.Path,
     tag: str | None = None,
 ) -> None:
     """Pack a workspace directory into a squashfs image.
@@ -34,13 +33,13 @@ async def pack(
     Raises:
         PackError: If pack operation fails.
     """
-    input_path = Path(await anyio.Path(input_dir).resolve())
-    output_path = Path(await anyio.Path(output_file).resolve())
+    input_path = anyio.Path(await anyio.Path(input_dir).resolve())
+    output_path = anyio.Path(await anyio.Path(output_file).resolve())
 
     # Validate input directory
-    if not await anyio.Path(input_path).exists():
+    if not await input_path.exists():
         raise PackError(f"Input directory does not exist: {input_path}")
-    if not await anyio.Path(input_path).is_dir():
+    if not await input_path.is_dir():
         raise PackError(f"Input path is not a directory: {input_path}")
 
     # Generate UUID for the layer
@@ -58,11 +57,11 @@ async def pack(
 
     # Create temporary directory for staging
     with tempfile.TemporaryDirectory() as temp_dir:
-        temp_path = Path(temp_dir)
+        temp_path = anyio.Path(temp_dir)
 
         # Create layer directory
         layer_dir = temp_path / layer_name
-        await anyio.Path(layer_dir).mkdir()
+        await layer_dir.mkdir()
 
         # Copy input directory contents to layer directory
         await _copy_directory(input_path, layer_dir)
@@ -79,19 +78,19 @@ async def pack(
     logger.info(f"Successfully created squashfs at {output_path}")
 
 
-async def _copy_directory(src: Path, dst: Path) -> None:
+async def _copy_directory(src: anyio.Path, dst: anyio.Path) -> None:
     """Copy directory contents asynchronously.
 
     Args:
         src: Source directory path.
         dst: Destination directory path.
     """
-    async for item in anyio.Path(src).iterdir():
+    async for item in src.iterdir():
         dest_item = dst / item.name
         logger.debug(f"Copying: {item} -> {dest_item}")
-        if await anyio.Path(item).is_dir():
-            await anyio.Path(dest_item).mkdir()
-            await _copy_directory(Path(item), dest_item)
+        if await item.is_dir():
+            await dest_item.mkdir()
+            await _copy_directory(item, dest_item)
         else:
             async with await anyio.open_file(item, "rb") as src_file:
                 content = await src_file.read()
@@ -99,7 +98,7 @@ async def _copy_directory(src: Path, dst: Path) -> None:
                 await dst_file.write(content)
 
 
-async def _create_squashfs(src_dir: Path, output_file: Path) -> None:
+async def _create_squashfs(src_dir: anyio.Path, output_file: anyio.Path) -> None:
     """Create squashfs image from directory.
 
     Args:
@@ -110,7 +109,7 @@ async def _create_squashfs(src_dir: Path, output_file: Path) -> None:
         PackError: If mksquashfs command fails.
     """
     # Ensure parent directory exists
-    await anyio.Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+    await output_file.parent.mkdir(parents=True, exist_ok=True)
 
     # Run mksquashfs command
     cmd = ["mksquashfs", str(src_dir), str(output_file), "-noappend", "-comp", "xz"]

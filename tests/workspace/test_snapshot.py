@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path as SyncPath
 from unittest.mock import patch
 
+import anyio
 import pytest
 
 from psi_agent.workspace.snapshot.api import SnapshotError, snapshot
@@ -13,58 +14,58 @@ from psi_agent.workspace.snapshot.api import SnapshotError, snapshot
 class TestSnapshot:
     """Tests for snapshot function."""
 
-    async def test_snapshot_nonexistent_input(self, tmp_path: Path) -> None:
+    async def test_snapshot_nonexistent_input(self, tmp_path: SyncPath) -> None:
         """Snapshot raises error for nonexistent input file."""
-        mount_point = tmp_path / "mounted"
-        mount_point.mkdir()
+        mount_point = anyio.Path(tmp_path) / "mounted"
+        await mount_point.mkdir()
 
         with pytest.raises(SnapshotError, match="Input file does not exist"):
-            await snapshot(tmp_path / "nonexistent.squashfs", mount_point)
+            await snapshot(anyio.Path(tmp_path) / "nonexistent.squashfs", mount_point)
 
-    async def test_snapshot_nonexistent_mount_point(self, tmp_path: Path) -> None:
+    async def test_snapshot_nonexistent_mount_point(self, tmp_path: SyncPath) -> None:
         """Snapshot raises error for nonexistent mount point."""
-        input_file = tmp_path / "workspace.squashfs"
-        input_file.touch()
+        input_file = anyio.Path(tmp_path) / "workspace.squashfs"
+        await input_file.touch()
 
         with pytest.raises(SnapshotError, match="Mount point does not exist"):
-            await snapshot(input_file, tmp_path / "nonexistent")
+            await snapshot(input_file, anyio.Path(tmp_path) / "nonexistent")
 
-    async def test_snapshot_missing_mount_info(self, tmp_path: Path) -> None:
+    async def test_snapshot_missing_mount_info(self, tmp_path: SyncPath) -> None:
         """Snapshot raises error when mount info is missing."""
-        input_file = tmp_path / "workspace.squashfs"
-        input_file.touch()
+        input_file = anyio.Path(tmp_path) / "workspace.squashfs"
+        await input_file.touch()
 
-        mount_point = tmp_path / "mounted"
-        mount_point.mkdir()
+        mount_point = anyio.Path(tmp_path) / "mounted"
+        await mount_point.mkdir()
 
         with pytest.raises(SnapshotError, match="Mount info file not found"):
             await snapshot(input_file, mount_point)
 
-    async def test_snapshot_invalid_mount_info(self, tmp_path: Path) -> None:
+    async def test_snapshot_invalid_mount_info(self, tmp_path: SyncPath) -> None:
         """Snapshot raises error when mount info is invalid."""
-        input_file = tmp_path / "workspace.squashfs"
-        input_file.touch()
+        input_file = anyio.Path(tmp_path) / "workspace.squashfs"
+        await input_file.touch()
 
-        mount_point = tmp_path / "mounted"
-        mount_point.mkdir()
+        mount_point = anyio.Path(tmp_path) / "mounted"
+        await mount_point.mkdir()
 
         # Create invalid mount info file
         mount_info = mount_point / ".psi-mount-info"
-        mount_info.write_text("not valid python")
+        await mount_info.write_text("not valid python")
 
         with pytest.raises(SnapshotError, match="Invalid mount info"):
             await snapshot(input_file, mount_point)
 
-    async def test_snapshot_with_valid_mount_info(self, tmp_path: Path) -> None:
+    async def test_snapshot_with_valid_mount_info(self, tmp_path: SyncPath) -> None:
         """Snapshot processes valid mount info correctly."""
-        input_file = tmp_path / "workspace.squashfs"
-        input_file.touch()
+        input_file = anyio.Path(tmp_path) / "workspace.squashfs"
+        await input_file.touch()
 
-        mount_point = tmp_path / "mounted"
-        mount_point.mkdir()
+        mount_point = anyio.Path(tmp_path) / "mounted"
+        await mount_point.mkdir()
 
-        upper_dir = tmp_path / "upper"
-        upper_dir.mkdir()
+        upper_dir = anyio.Path(tmp_path) / "upper"
+        await upper_dir.mkdir()
 
         # Create valid mount info file
         mount_info = mount_point / ".psi-mount-info"
@@ -72,7 +73,7 @@ class TestSnapshot:
             f"{{'squashfs_mount': '{tmp_path}/squashfs', "
             f"'upper_dir': '{upper_dir}', 'work_dir': '{tmp_path}/work'}}"
         )
-        mount_info.write_text(mount_info_content)
+        await mount_info.write_text(mount_info_content)
 
         # Mock the internal functions to avoid needing actual squashfs tools
         with (

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import anyio
 
 from psi_agent.ai.anthropic_messages.config import AnthropicMessagesConfig
 
@@ -35,12 +35,12 @@ class TestAnthropicMessagesConfig:
         assert config.base_url == "https://custom.anthropic.com"
 
     def test_socket_path(self) -> None:
-        """Test socket_path returns Path object."""
+        """Test socket_path returns anyio.Path object."""
         config = AnthropicMessagesConfig(
             session_socket="/tmp/test.sock",
             model="claude-sonnet-4-20250514",
             api_key="test-key",
         )
 
-        assert isinstance(config.socket_path(), Path)
-        assert config.socket_path() == Path("/tmp/test.sock")
+        assert isinstance(config.socket_path(), anyio.Path)
+        assert config.socket_path() == anyio.Path("/tmp/test.sock")

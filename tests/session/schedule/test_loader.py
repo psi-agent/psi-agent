@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
 
+import anyio
 import pytest
 
 from psi_agent.session.schedule import load_schedule, load_schedules, parse_frontmatter
@@ -62,11 +62,11 @@ class TestLoadSchedule:
     async def test_load_valid_schedule(self) -> None:
         """Test loading a valid schedule."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            task_dir = Path(tmpdir) / "test-task"
-            task_dir.mkdir()
+            task_dir = anyio.Path(tmpdir) / "test-task"
+            await task_dir.mkdir()
 
             task_file = task_dir / "TASK.md"
-            task_file.write_text("""---
+            await task_file.write_text("""---
 name: test-task
 description: A test task
 cron: "0 9 * * *"
@@ -86,8 +86,8 @@ Do something daily.""")
     async def test_load_missing_task_md(self) -> None:
         """Test loading from directory without TASK.md."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            task_dir = Path(tmpdir) / "test-task"
-            task_dir.mkdir()
+            task_dir = anyio.Path(tmpdir) / "test-task"
+            await task_dir.mkdir()
 
             schedule = await load_schedule(task_dir)
 
@@ -97,11 +97,11 @@ Do something daily.""")
     async def test_load_missing_cron(self) -> None:
         """Test loading schedule without cron field."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            task_dir = Path(tmpdir) / "test-task"
-            task_dir.mkdir()
+            task_dir = anyio.Path(tmpdir) / "test-task"
+            await task_dir.mkdir()
 
             task_file = task_dir / "TASK.md"
-            task_file.write_text("""---
+            await task_file.write_text("""---
 name: test-task
 ---
 
@@ -119,14 +119,14 @@ class TestLoadSchedules:
     async def test_load_multiple_schedules(self) -> None:
         """Test loading multiple schedules from workspace."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            workspace = Path(tmpdir)
+            workspace = anyio.Path(tmpdir)
             schedules_dir = workspace / "schedules"
-            schedules_dir.mkdir()
+            await schedules_dir.mkdir()
 
             # Create first task
             task1_dir = schedules_dir / "task1"
-            task1_dir.mkdir()
-            (task1_dir / "TASK.md").write_text("""---
+            await task1_dir.mkdir()
+            await (task1_dir / "TASK.md").write_text("""---
 name: task1
 cron: "0 9 * * *"
 ---
@@ -135,8 +135,8 @@ Task 1 content.""")
 
             # Create second task
             task2_dir = schedules_dir / "task2"
-            task2_dir.mkdir()
-            (task2_dir / "TASK.md").write_text("""---
+            await task2_dir.mkdir()
+            await (task2_dir / "TASK.md").write_text("""---
 name: task2
 cron: "0 18 * * *"
 ---
@@ -154,7 +154,7 @@ Task 2 content.""")
     async def test_load_no_schedules_dir(self) -> None:
         """Test loading from workspace without schedules directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            workspace = Path(tmpdir)
+            workspace = anyio.Path(tmpdir)
 
             schedules = await load_schedules(workspace)
 
@@ -164,9 +164,9 @@ Task 2 content.""")
     async def test_load_empty_schedules_dir(self) -> None:
         """Test loading from empty schedules directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            workspace = Path(tmpdir)
+            workspace = anyio.Path(tmpdir)
             schedules_dir = workspace / "schedules"
-            schedules_dir.mkdir()
+            await schedules_dir.mkdir()
 
             schedules = await load_schedules(workspace)
 

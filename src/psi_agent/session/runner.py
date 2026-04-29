@@ -6,7 +6,6 @@ import importlib.util
 import json
 import sys
 from collections.abc import AsyncGenerator
-from pathlib import Path
 from typing import Any
 
 import aiohttp
@@ -22,7 +21,7 @@ from psi_agent.session.types import History, ToolRegistry
 from psi_agent.session.workspace_watcher import ChangeSummary, WorkspaceWatcher
 
 
-async def _load_system(workspace: Path) -> Any:
+async def _load_system(workspace: anyio.Path) -> Any:
     """Load System class from workspace systems.
 
     Args:
@@ -32,7 +31,7 @@ async def _load_system(workspace: Path) -> Any:
         System instance, or None if not available.
     """
     system_file = workspace / "systems" / "system.py"
-    if not await anyio.Path(system_file).exists():
+    if not await system_file.exists():
         logger.debug("No systems/system.py found, skipping system prompt")
         return None
 
@@ -62,7 +61,7 @@ async def _load_system(workspace: Path) -> Any:
         return None
 
 
-async def load_system_prompt(workspace: Path) -> str | None:
+async def load_system_prompt(workspace: anyio.Path) -> str | None:
     """Load system prompt from workspace systems.
 
     Args:
@@ -72,7 +71,7 @@ async def load_system_prompt(workspace: Path) -> str | None:
         System prompt string, or None if not available.
     """
     system_file = workspace / "systems" / "system.py"
-    if not await anyio.Path(system_file).exists():
+    if not await system_file.exists():
         logger.debug("No systems/system.py found, skipping system prompt")
         return None
 
@@ -201,7 +200,7 @@ class SessionRunner:
             for name in changes.schedules_removed:
                 await self._schedule_executor.remove_schedule(name)
 
-    async def _load_single_schedule(self, task_dir: Path) -> Schedule | None:
+    async def _load_single_schedule(self, task_dir: anyio.Path) -> Schedule | None:
         """Load a single schedule from a task directory.
 
         Args:

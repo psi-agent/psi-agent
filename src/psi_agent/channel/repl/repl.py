@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import anyio
 from loguru import logger
 from prompt_toolkit import PromptSession
@@ -13,15 +11,15 @@ from psi_agent.channel.repl.client import ReplClient
 from psi_agent.channel.repl.config import ReplConfig
 
 
-async def _ensure_history_dir(history_path: Path) -> None:
+async def _ensure_history_dir(history_path: anyio.Path) -> None:
     """Ensure the directory for the history file exists.
 
     Args:
         history_path: Path to the history file.
     """
     history_dir = history_path.parent
-    if not await anyio.Path(history_dir).exists():
-        await anyio.Path(history_dir).mkdir(parents=True, exist_ok=True)
+    if not await history_dir.exists():
+        await history_dir.mkdir(parents=True, exist_ok=True)
         logger.debug(f"Created history directory: {history_dir}")
 
 
