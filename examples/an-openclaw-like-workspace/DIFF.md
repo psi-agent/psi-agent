@@ -91,6 +91,13 @@
 | Tool Call Style | 仅保留核心原则（不叙述常规调用、保持简洁），去掉审批处理相关内容 |
 | Runtime | 使用 Python 版本而非 Node.js 版本，不包含 channel 信息 |
 | Silent Replies | 仅在 system prompt 中实现指导，session 和 channel 不实现 SILENT_TOKEN 处理 |
+| Real Conversation Detection | 已实现：检测心跳/静默回复等非真实对话，避免无意义的 compaction |
+
+### 5. 新增功能
+
+| 功能 | 说明 |
+|------|------|
+| Real Conversation Detection | 新增 `has_meaningful_conversation_content()` 和 `is_real_conversation_message()` 函数，用于检测消息是否包含真正的对话内容。在 compaction 前检查，如果没有真实对话则跳过，节省 LLM 调用资源。 |
 
 ### 5. 架构差异
 
