@@ -68,7 +68,18 @@ class TelegramBot:
 
     async def start(self) -> None:
         """Start the Telegram bot."""
-        self._app = Application.builder().token(self.config.token).build()
+        builder = Application.builder().token(self.config.token)
+
+        # Configure proxy if provided
+        if self.config.proxy:
+            builder = builder.proxy(self.config.proxy)
+            # Log proxy without credentials (show host only)
+            proxy_display = (
+                self.config.proxy.split("@")[-1] if "@" in self.config.proxy else self.config.proxy
+            )
+            logger.debug(f"Using proxy: {proxy_display}")
+
+        self._app = builder.build()
 
         # Add handlers
         self._app.add_handler(CommandHandler("start", self._start_command))

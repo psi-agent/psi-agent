@@ -15,19 +15,29 @@ from psi_agent.utils.proctitle import mask_sensitive_args
 
 @dataclass
 class Telegram:
-    """Run the Telegram channel for bot conversation."""
+    """Run the Telegram channel for bot conversation.
+
+    Args:
+        token: Telegram bot token.
+        session_socket: Path to the Unix socket for communication with psi-session.
+        proxy: Optional proxy URL for connecting to Telegram API. Supports socks5://,
+            http://, and https:// formats. Defaults to None (direct connection).
+    """
 
     token: str
     session_socket: str
+    proxy: str | None = None
 
     def __call__(self) -> None:
         # Mask sensitive arguments from process title
-        mask_sensitive_args(["token"])
+        mask_sensitive_args(["token", "proxy"])
 
         logger.info("Starting psi-channel-telegram")
         logger.debug(f"Config: session_socket={self.session_socket}")
 
-        config = TelegramConfig(token=self.token, session_socket=self.session_socket)
+        config = TelegramConfig(
+            token=self.token, session_socket=self.session_socket, proxy=self.proxy
+        )
         bot = TelegramBot(config)
 
         asyncio.run(bot.start())
