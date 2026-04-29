@@ -85,10 +85,6 @@ async def _handle_streaming(response: aiohttp.ClientResponse) -> str:
     Returns:
         Concatenated response content string.
     """
-    import json
-
-    from loguru import logger
-
     content_parts = []
 
     async for line in response.content:

@@ -11,8 +11,6 @@ from loguru import logger
 class UnpackError(Exception):
     """Raised when unpack operation fails."""
 
-    pass
-
 
 async def unpack(
     input_file: str | anyio.Path,

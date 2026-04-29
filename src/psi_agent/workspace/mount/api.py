@@ -15,8 +15,6 @@ from psi_agent.workspace.manifest import Manifest, parse_manifest
 class MountError(Exception):
     """Raised when mount operation fails."""
 
-    pass
-
 
 async def mount(
     input_file: str | anyio.Path,

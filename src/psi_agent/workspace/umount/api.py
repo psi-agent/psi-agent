@@ -11,8 +11,6 @@ from loguru import logger
 class UmountError(Exception):
     """Raised when umount operation fails."""
 
-    pass
-
 
 async def umount(
     mount_point: str | anyio.Path,

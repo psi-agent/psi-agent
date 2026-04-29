@@ -2,48 +2,88 @@
 
 ### Requirement: All Python files must include future annotations import
 
-All Python source files in the `src/` and `tests/` directories SHALL include `from __future__ import annotations` after the module docstring (if present) and before any other imports.
+All Python files in the codebase SHALL include `from __future__ import annotations` as the first import statement (after the module docstring) to enable modern type annotation syntax.
 
-#### Scenario: Source file with module docstring
-- **WHEN** a Python file in `src/` has a module docstring
-- **THEN** the file SHALL have `from __future__ import annotations` immediately after the docstring
+#### Scenario: New Python file created
+- **WHEN** a new Python file is created in the project
+- **THEN** the file SHALL include `from __future__ import annotations` after the module docstring
 
-#### Scenario: Source file without module docstring
-- **WHEN** a Python file in `src/` has no module docstring
-- **THEN** the file SHALL have `from __future__ import annotations` as the first statement
+#### Scenario: Type annotations use modern syntax
+- **WHEN** type annotations are written in the code
+- **THEN** they SHALL use modern union syntax (`X | Y`) instead of `Optional[X]` or `Union[X, Y]`
 
-#### Scenario: Test file
-- **WHEN** a Python file is in the `tests/` directory
-- **THEN** the file SHALL have `from __future__ import annotations` after any module docstring
+### Requirement: Import statements must follow ordering convention
 
-### Requirement: File IO operations must use async methods
+All Python files SHALL organize imports in three groups in the following order:
+1. Standard library imports
+2. Third-party library imports
+3. Local project imports
 
-All file system IO operations SHALL use `anyio.Path` async methods instead of `pathlib.Path` synchronous methods.
+Each group SHALL be sorted alphabetically.
 
-#### Scenario: File existence check
-- **WHEN** code needs to check if a file exists
-- **THEN** it SHALL use `await anyio.Path(path).exists()` instead of `Path(path).exists()`
+#### Scenario: Import order validation
+- **WHEN** a Python file is checked for import order
+- **THEN** all stdlib imports SHALL appear before third-party imports
+- **AND** all third-party imports SHALL appear before local imports
+- **AND** imports within each group SHALL be sorted alphabetically
 
-#### Scenario: File deletion
-- **WHEN** code needs to delete a file
-- **THEN** it SHALL use `await anyio.Path(path).unlink()` instead of `Path(path).unlink()`
+### Requirement: Type annotations must be complete
 
-#### Scenario: Directory iteration
-- **WHEN** code needs to iterate over directory contents
-- **THEN** it SHALL use `async for item in anyio.Path(path).iterdir()` instead of `for item in Path(path).iterdir()`
+All function parameters and return types SHALL have type annotations. The only exceptions are:
+- `self` and `cls` parameters in methods
+- Parameters with `*args` and `**kwargs`
 
-#### Scenario: File reading
-- **WHEN** code needs to read file content
-- **THEN** it SHALL use `await anyio.Path(path).read_text()` or `await anyio.open_file(path)` instead of `Path(path).read_text()`
+#### Scenario: Function definition checked
+- **WHEN** a function is defined
+- **THEN** all parameters SHALL have type annotations
+- **AND** the return type SHALL be annotated
 
-### Requirement: pathlib.Path may be used for non-IO operations
+### Requirement: Docstrings must follow Google style
 
-`pathlib.Path` MAY be used for type annotations and path manipulation operations that do not perform IO.
+All modules, classes, and public functions SHALL have docstrings following Google style format.
 
-#### Scenario: Path type annotation
-- **WHEN** a function parameter or return type is a path
-- **THEN** `pathlib.Path` MAY be used in the type annotation
+#### Scenario: Function docstring format
+- **WHEN** a function has a docstring
+- **THEN** it SHALL include a brief description
+- **AND** it MAY include Args, Returns, and Raises sections as appropriate
 
-#### Scenario: Path concatenation
-- **WHEN** code needs to construct a path from parts
-- **THEN** `pathlib.Path` MAY be used for the concatenation operation
+#### Scenario: Class docstring format
+- **WHEN** a class has a docstring
+- **THEN** it SHALL include a brief description
+- **AND** it MAY include an Attributes section
+
+### Requirement: Exception classes must have proper docstrings
+
+Exception classes SHALL have docstrings on the class definition, not on the `pass` statement.
+
+#### Scenario: Exception class definition
+- **WHEN** an exception class is defined
+- **THEN** the docstring SHALL be placed immediately after the class definition line
+- **AND** the docstring SHALL NOT be placed after the `pass` statement
+
+### Requirement: Async operations must use async methods
+
+All IO operations SHALL use async methods from the appropriate libraries:
+- File operations: `anyio.Path` or `anyio.open_file()`
+- HTTP requests: `aiohttp.ClientSession`
+- Subprocess: `asyncio.create_subprocess_exec` or `asyncio.create_subprocess_shell`
+
+#### Scenario: File read operation
+- **WHEN** a file needs to be read
+- **THEN** the code SHALL use `await anyio.Path(path).read_text()` or `await anyio.open_file()`
+
+#### Scenario: Subprocess execution
+- **WHEN** a subprocess command needs to be executed
+- **THEN** the code SHALL use `asyncio.create_subprocess_exec()` or `asyncio.create_subprocess_shell()`
+
+### Requirement: CLI sensitive arguments must be masked
+
+CLI entry points that accept sensitive credentials (API keys, tokens, passwords) SHALL call `mask_sensitive_args()` immediately after argument parsing.
+
+#### Scenario: CLI with API key argument
+- **WHEN** a CLI accepts an `api_key` argument
+- **THEN** the CLI SHALL call `mask_sensitive_args(["api_key"])` at the start of `__call__`
+
+#### Scenario: Process list inspection
+- **WHEN** the process is running
+- **THEN** sensitive arguments SHALL NOT be visible in process listings (ps, top, /proc)

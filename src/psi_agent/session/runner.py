@@ -422,14 +422,16 @@ class SessionRunner:
         # This implementation handles non-streaming for tool calls, then streams final response
         return await self._run_streaming_conversation(messages)
 
-    async def _run_streaming_conversation(self, messages: list[dict[str, Any]]) -> Any:
+    async def _run_streaming_conversation(
+        self, messages: list[dict[str, Any]]
+    ) -> AsyncGenerator[str] | dict[str, Any]:
         """Run conversation with streaming, handling tool calls.
 
         Args:
             messages: Messages to send to LLM.
 
         Returns:
-            Async generator or final response.
+            Async generator yielding SSE chunks, or final response dict.
         """
 
         assert self.client is not None

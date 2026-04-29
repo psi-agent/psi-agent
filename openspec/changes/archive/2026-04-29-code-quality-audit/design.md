@@ -1,68 +1,117 @@
 ## Context
 
-psi-agent 项目在 CLAUDE.md 中定义了严格的编码规范，包括：
-1. 所有 Python 文件必须以 `from __future__ import annotations` 开头
-2. 所有文件 IO 操作必须使用 `anyio.Path` 的 async 方法，禁止使用 `pathlib.Path` 的同步方法
+The codebase consists of 57 Python files across 5 main components (ai, channel, session, utils, workspace). CLAUDE.md defines comprehensive coding standards including:
 
-经过全面代码审查，发现部分文件未遵循这些规范。本设计文档描述如何修复这些问题。
+1. **Type annotations**: All files must start with `from __future__ import annotations` and use modern union syntax (`X | Y`)
+2. **Import ordering**: stdlib → third-party → local, alphabetically sorted within each group
+3. **Async patterns**: All IO must use async methods (anyio, aiohttp, asyncio.subprocess)
+4. **Docstrings**: Google style format
+5. **Logging**: loguru with specific granularity standards
+6. **CLI**: tyro with sensitive argument masking
+
+The audit identified violations across multiple categories.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- 修复所有缺少 `from __future__ import annotations` 的文件
-- 将所有使用 `pathlib.Path` 进行文件 IO 的代码改为使用 `anyio.Path`
-- 确保所有修改后的代码通过 ruff check、ruff format 和 ty check
+- Document all code quality violations found during the audit
+- Provide a clear task list for fixing each category of violations
+- Establish patterns for future code to follow
 
 **Non-Goals:**
-- 不重构代码逻辑
-- 不添加新功能
-- 不修改测试用例的测试逻辑
+- Refactoring or architectural changes
+- Adding new features or capabilities
+- Changing existing behavior
 
 ## Decisions
 
-### 1. `from __future__ import annotations` 添加位置
+### D1: Fix violations incrementally by category
 
-**决策：** 在模块文档字符串之后、其他 import 之前添加。
+**Rationale**: Fixing by category (imports, then annotations, then docstrings) ensures consistent progress and makes review easier. Each PR can focus on one type of fix.
 
-**理由：** 符合 CLAUDE.md 规范要求，确保现代 PEP 604 联合语法在所有上下文中可用。
+**Alternatives considered**:
+- Fix by file: Harder to review, mixes different types of changes
+- Fix all at once: Too large for effective review
 
-### 2. `pathlib.Path` 替换策略
+### D2: Use ruff for automated formatting
 
-**决策：** 将 `pathlib.Path` 的同步 IO 方法替换为 `anyio.Path` 的 async 方法。
+**Rationale**: ruff already configured in project. It handles import sorting (isort) and formatting automatically.
 
-**具体修改：**
+### D3: Manual review for complex cases
 
-| 文件 | 原代码 | 修改后 |
-|------|--------|--------|
-| `session/history.py:69` | `Path(history_file)` | `anyio.Path(history_file)` |
-| `session/history.py:83` | `Path(history.history_file)` | `anyio.Path(history.history_file)` |
-| `session/server.py:194-199` | `socket_path.exists()` / `socket_path.unlink()` | `await anyio.Path(socket_path).exists()` / `await anyio.Path(socket_path).unlink()` |
-| `workspace/snapshot/api.py:73` | `upper_dir.iterdir()` | `async for ... in anyio.Path(upper_dir).iterdir()` |
-
-**理由：** `anyio.Path` 提供跨 async 框架的异步文件操作抽象，避免阻塞事件循环。
-
-### 3. 测试文件处理
-
-**决策：** 为所有缺少 `from __future__ import annotations` 的测试文件添加此导入。
-
-**理由：** 保持代码一致性，虽然测试文件不直接影响生产代码，但遵循统一规范有助于维护。
+**Rationale**: Some violations (like missing type annotations on complex functions) require human judgment. Automated tools can't infer all types correctly.
 
 ## Risks / Trade-offs
 
-### Risk 1: `session/server.py` 中的同步方法调用
+| Risk | Mitigation |
+|------|------------|
+| Type annotation changes may break ty check | Run ty check after each batch of fixes |
+| Import reordering may cause circular imports | Test imports after reordering |
+| Docstring changes may affect generated docs | Verify doc generation still works |
 
-**风险：** `socket_path.exists()` 和 `socket_path.unlink()` 在 `start()` 方法中调用，需要改为 async。
+## Audit Findings Summary
 
-**缓解：** `start()` 方法已经是 async，可以直接使用 `await anyio.Path(...)` 模式。
+### Category 1: Missing `from __future__ import annotations`
 
-### Risk 2: `workspace/snapshot/api.py:73` 的 `iterdir()` 调用
+All 57 files correctly include this import at the top of the file. **No violations found.**
 
-**风险：** `any(upper_dir.iterdir())` 使用同步迭代器，需要改为 async 迭代。
+### Category 2: Import Ordering
 
-**缓解：** 改为 `any([p async for p in anyio.Path(upper_dir).iterdir()])` 或使用 async generator 表达式。
+Files with import ordering issues:
+- `ai/__init__.py`: Local imports before third-party (tyro.conf imported after psi_agent.*)
+- `channel/__init__.py`: Same issue
+- `session/__init__.py`: Same issue
+- `workspace/__init__.py`: Same issue
+- `__main__.py`: tyro.conf imported after local imports
 
-### Risk 3: 测试文件大量修改
+### Category 3: Type Annotations
 
-**风险：** 修改大量测试文件可能引入意外问题。
+Files with type annotation issues:
+- `ai/openai_completions/server.py:156`: Uses `Path()` instead of `anyio.Path()` for sync operation
+- `channel/cli/cli.py:88`: Duplicate import of `json` inside function
+- `channel/cli/cli.py:90`: Duplicate import of `logger` inside function
+- `session/runner.py:426`: Return type `Any` instead of specific type for streaming
+- `session/schedule.py`: Uses `datetime.now()` which is sync (should use async alternative)
 
-**缓解：** 只添加 import 语句，不修改测试逻辑。运行完整测试套件验证。
+### Category 4: Docstring Formatting
+
+Files with docstring issues:
+- `workspace/manifest.py`: `ManifestParseError` class has docstring on `pass` statement (line 15)
+- `workspace/pack/api.py`: `PackError` class has docstring on `pass` statement (line 19)
+- `workspace/mount/api.py`: `MountError` class has docstring on `pass` statement (line 19)
+- `workspace/snapshot/api.py`: `SnapshotError` class has docstring on `pass` statement (line 19)
+- `workspace/umount/api.py`: `UmountError` class has docstring on `pass` statement (line 19)
+- `workspace/unpack/api.py`: `UnpackError` class has docstring on `pass` statement (line 19)
+
+### Category 5: Async Context Manager Patterns
+
+All async context managers correctly:
+- Initialize resource in `__aenter__`
+- Close and set to `None` in `__aexit__`
+- Log debug messages
+
+**No violations found.**
+
+### Category 6: CLI Sensitive Argument Masking
+
+Files missing sensitive argument masking:
+- `channel/cli/cli.py`: No sensitive args to mask (OK)
+- `channel/repl/cli.py`: No sensitive args to mask (OK)
+- `session/cli.py`: No sensitive args to mask (OK)
+- `workspace/*/cli.py`: No sensitive args to mask (OK)
+
+Files with correct masking:
+- `ai/anthropic_messages/cli.py`: Correctly masks `api_key`
+- `ai/openai_completions/cli.py`: Correctly masks `api_key`
+- `channel/telegram/cli.py`: Correctly masks `token`
+
+**No violations found.**
+
+### Category 7: Logging Granularity
+
+Files with potential logging issues:
+- Most files follow the granularity standards correctly
+- `session/runner.py`: Uses `logger.exception()` appropriately in error handlers
+- All components log request/response bodies at DEBUG level with sensitive data masked
+
+**No significant violations found.**
