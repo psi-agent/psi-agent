@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 
 from psi_agent.ai.anthropic_messages.translator import (
+    StreamingTranslator,
     translate_anthropic_stream,
     translate_anthropic_to_openai,
     translate_openai_to_anthropic,
@@ -204,8 +205,6 @@ class TestStreamingTranslator:
 
     def test_message_start_event(self) -> None:
         """Test message_start event extracts id and model."""
-        from psi_agent.ai.anthropic_messages.translator import StreamingTranslator
-
         translator = StreamingTranslator()
         result = translator.translate_event(
             "message_start",
@@ -219,8 +218,6 @@ class TestStreamingTranslator:
 
     def test_content_block_delta_event(self) -> None:
         """Test content_block_delta event produces content chunk."""
-        from psi_agent.ai.anthropic_messages.translator import StreamingTranslator
-
         translator = StreamingTranslator()
         translator._message_id = "msg_123"
         translator._model = "claude-3"
@@ -235,8 +232,6 @@ class TestStreamingTranslator:
 
     def test_message_stop_event(self) -> None:
         """Test message_stop event produces [DONE] marker."""
-        from psi_agent.ai.anthropic_messages.translator import StreamingTranslator
-
         translator = StreamingTranslator()
 
         result = translator.translate_event("message_stop", {})
@@ -245,8 +240,6 @@ class TestStreamingTranslator:
 
     def test_message_delta_with_stop_reason(self) -> None:
         """Test message_delta with stop_reason produces finish_reason."""
-        from psi_agent.ai.anthropic_messages.translator import StreamingTranslator
-
         translator = StreamingTranslator()
         translator._message_id = "msg_123"
         translator._model = "claude-3"
@@ -261,8 +254,6 @@ class TestStreamingTranslator:
 
     def test_ignored_events(self) -> None:
         """Test that some events produce no output."""
-        from psi_agent.ai.anthropic_messages.translator import StreamingTranslator
-
         translator = StreamingTranslator()
 
         assert translator.translate_event("content_block_start", {}) is None
@@ -270,8 +261,6 @@ class TestStreamingTranslator:
 
     def test_content_block_delta_empty_text(self) -> None:
         """Test content_block_delta with empty text produces no output."""
-        from psi_agent.ai.anthropic_messages.translator import StreamingTranslator
-
         translator = StreamingTranslator()
         translator._message_id = "msg_123"
         translator._model = "claude-3"
@@ -285,8 +274,6 @@ class TestStreamingTranslator:
 
     def test_message_delta_without_stop_reason(self) -> None:
         """Test message_delta without stop_reason produces no output."""
-        from psi_agent.ai.anthropic_messages.translator import StreamingTranslator
-
         translator = StreamingTranslator()
         translator._message_id = "msg_123"
         translator._model = "claude-3"
@@ -300,8 +287,6 @@ class TestStreamingTranslator:
 
     def test_unknown_event_type(self) -> None:
         """Test unknown event type produces no output."""
-        from psi_agent.ai.anthropic_messages.translator import StreamingTranslator
-
         translator = StreamingTranslator()
 
         result = translator.translate_event("unknown_event", {})

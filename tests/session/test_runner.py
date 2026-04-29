@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import os
 import tempfile
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import anyio
 import pytest
 
 from psi_agent.session.config import SessionConfig
 from psi_agent.session.runner import SessionRunner, load_system_prompt
+from psi_agent.session.workspace_watcher import ChangeSummary
 
 
 @pytest.fixture
@@ -283,8 +284,6 @@ class TestRunnerWorkspaceChanges:
             tool_file = tools_dir / "new_tool.py"
             await tool_file.write_text("async def tool(x: int) -> int: return x")
 
-            from psi_agent.session.workspace_watcher import ChangeSummary
-
             changes = ChangeSummary(
                 tools_added=["new_tool"],
                 tools_modified=[],
@@ -305,15 +304,11 @@ class TestRunnerWorkspaceChanges:
     @pytest.mark.asyncio
     async def test_handle_workspace_changes_skills(self, config):
         """Test handling skill changes rebuilds system prompt."""
-        from unittest.mock import AsyncMock, MagicMock
-
         runner = SessionRunner(config)
         async with runner:
             # Set up a mock system
             runner._system = MagicMock()
             runner._system.build_system_prompt = AsyncMock(return_value="New system prompt")
-
-            from psi_agent.session.workspace_watcher import ChangeSummary
 
             changes = ChangeSummary(
                 tools_added=[],
@@ -403,7 +398,6 @@ class TestRunnerScheduleExecutor:
     def test_set_schedule_executor(self, config):
         """Test setting schedule executor."""
         runner = SessionRunner(config)
-        from unittest.mock import MagicMock
 
         executor = MagicMock()
         runner.set_schedule_executor(executor)
