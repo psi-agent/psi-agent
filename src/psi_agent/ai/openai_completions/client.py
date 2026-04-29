@@ -7,7 +7,14 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from loguru import logger
-from openai import AsyncOpenAI
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AsyncOpenAI,
+    AuthenticationError,
+    RateLimitError,
+)
 from openai.types.chat import ChatCompletion
 
 from psi_agent.ai.openai_completions.config import OpenAICompletionsConfig
@@ -132,14 +139,6 @@ class OpenAICompletionsClient:
         Returns:
             Error dict with status_code.
         """
-        from openai import (
-            APIConnectionError,
-            APIStatusError,
-            APITimeoutError,
-            AuthenticationError,
-            RateLimitError,
-        )
-
         if isinstance(e, AuthenticationError):
             logger.error(f"Authentication failed: {e}")
             return {"error": "Authentication failed", "status_code": 401}

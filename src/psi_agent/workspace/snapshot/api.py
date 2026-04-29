@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import shutil
 import tempfile
@@ -56,8 +57,6 @@ async def snapshot(
 
     async with await anyio.open_file(mount_info_path) as f:
         info_content = await f.read()
-
-    import ast
 
     try:
         mount_info = ast.literal_eval(info_content)

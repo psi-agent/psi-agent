@@ -3,20 +3,9 @@
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING
 
+import setproctitle
 from loguru import logger
-
-if TYPE_CHECKING:
-    pass
-
-# Try to import setproctitle, with graceful fallback
-try:
-    import setproctitle
-
-    _HAS_SETPROCTITLE = True
-except ImportError:
-    _HAS_SETPROCTITLE = False
 
 
 def mask_sensitive_args(sensitive_keys: list[str]) -> None:
@@ -31,16 +20,9 @@ def mask_sensitive_args(sensitive_keys: list[str]) -> None:
                        Both underscore and hyphen variants are handled.
 
     Note:
-        This uses the setproctitle library if available. On platforms where
-        setproctitle is not available, a warning is logged and no masking occurs.
         There is a brief window between process start and this function call
         where arguments may be visible.
     """
-    if not _HAS_SETPROCTITLE:
-        logger.warning(
-            "setproctitle not available, sensitive arguments may be visible in process list"
-        )
-        return
 
     # Get current argv
     argv = sys.argv

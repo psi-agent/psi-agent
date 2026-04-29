@@ -17,10 +17,7 @@ class TestMaskSensitiveArgs:
         """Test masking a single argument with underscore in key name."""
         monkeypatch.setattr(sys, "argv", ["program", "--api-key", "secret123", "--other", "value"])
 
-        with (
-            mock.patch("psi_agent.utils.proctitle.setproctitle") as mock_setproctitle,
-            mock.patch("psi_agent.utils.proctitle._HAS_SETPROCTITLE", True),
-        ):
+        with mock.patch("psi_agent.utils.proctitle.setproctitle") as mock_setproctitle:
             mask_sensitive_args(["api_key"])
 
         # Check that setproctitle was called with masked value
@@ -33,10 +30,7 @@ class TestMaskSensitiveArgs:
         """Test masking a single argument with hyphen in key name."""
         monkeypatch.setattr(sys, "argv", ["program", "--api-key", "secret123", "--other", "value"])
 
-        with (
-            mock.patch("psi_agent.utils.proctitle.setproctitle") as mock_setproctitle,
-            mock.patch("psi_agent.utils.proctitle._HAS_SETPROCTITLE", True),
-        ):
+        with mock.patch("psi_agent.utils.proctitle.setproctitle") as mock_setproctitle:
             mask_sensitive_args(["api-key"])
 
         call_arg = mock_setproctitle.setproctitle.call_args[0][0]
@@ -47,10 +41,7 @@ class TestMaskSensitiveArgs:
         """Test masking argument in --key=value format."""
         monkeypatch.setattr(sys, "argv", ["program", "--api-key=secret123", "--other", "value"])
 
-        with (
-            mock.patch("psi_agent.utils.proctitle.setproctitle") as mock_setproctitle,
-            mock.patch("psi_agent.utils.proctitle._HAS_SETPROCTITLE", True),
-        ):
+        with mock.patch("psi_agent.utils.proctitle.setproctitle") as mock_setproctitle:
             mask_sensitive_args(["api_key"])
 
         call_arg = mock_setproctitle.setproctitle.call_args[0][0]
@@ -63,10 +54,7 @@ class TestMaskSensitiveArgs:
             sys, "argv", ["program", "--api-key", "secret123", "--token", "token456"]
         )
 
-        with (
-            mock.patch("psi_agent.utils.proctitle.setproctitle") as mock_setproctitle,
-            mock.patch("psi_agent.utils.proctitle._HAS_SETPROCTITLE", True),
-        ):
+        with mock.patch("psi_agent.utils.proctitle.setproctitle") as mock_setproctitle:
             mask_sensitive_args(["api_key", "token"])
 
         call_arg = mock_setproctitle.setproctitle.call_args[0][0]
@@ -74,24 +62,13 @@ class TestMaskSensitiveArgs:
         assert "token456" not in call_arg
         assert call_arg.count("***") == 2
 
-    def test_no_setproctitle_available(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Test graceful fallback when setproctitle is not available."""
-        monkeypatch.setattr(sys, "argv", ["program", "--api-key", "secret123"])
-
-        with mock.patch("psi_agent.utils.proctitle._HAS_SETPROCTITLE", False):
-            # Should not raise, just log warning
-            mask_sensitive_args(["api_key"])
-
     def test_non_sensitive_args_unchanged(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Test that non-sensitive arguments are not masked."""
         monkeypatch.setattr(
             sys, "argv", ["program", "--api-key", "secret", "--model", "gpt-4", "--port", "8080"]
         )
 
-        with (
-            mock.patch("psi_agent.utils.proctitle.setproctitle") as mock_setproctitle,
-            mock.patch("psi_agent.utils.proctitle._HAS_SETPROCTITLE", True),
-        ):
+        with mock.patch("psi_agent.utils.proctitle.setproctitle") as mock_setproctitle:
             mask_sensitive_args(["api_key"])
 
         call_arg = mock_setproctitle.setproctitle.call_args[0][0]

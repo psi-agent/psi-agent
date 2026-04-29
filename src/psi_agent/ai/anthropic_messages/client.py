@@ -6,7 +6,14 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from anthropic import AsyncAnthropic
+from anthropic import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AsyncAnthropic,
+    AuthenticationError,
+    RateLimitError,
+)
 from anthropic.types import Message
 from loguru import logger
 
@@ -151,14 +158,6 @@ class AnthropicMessagesClient:
         Returns:
             Error dict with status_code.
         """
-        from anthropic import (
-            APIConnectionError,
-            APIStatusError,
-            APITimeoutError,
-            AuthenticationError,
-            RateLimitError,
-        )
-
         if isinstance(e, AuthenticationError):
             logger.error(f"Authentication failed: {e}")
             return {"error": "Authentication failed", "status_code": 401}
