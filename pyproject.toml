@@ -14,6 +14,7 @@ dependencies = [
     "croniter>=3.0.0",
     "loguru>=0.7.3",
     "openai>=1.30.0",
+    "platformdirs>=4.3.0",
     "prompt-toolkit>=3.0.51",
     "python-telegram-bot>=22.0",
     "setproctitle>=1.3.4",

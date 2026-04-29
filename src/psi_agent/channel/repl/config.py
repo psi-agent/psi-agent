@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path as SyncPath
 
 import anyio
+from platformdirs import user_cache_dir
 
 
 @dataclass
@@ -28,9 +28,10 @@ class ReplConfig:
         """Get the history file path.
 
         Returns the configured history file path or the default path
-        at ~/.cache/psi-agent/repl_history.txt.
+        at the platform-specific cache directory.
         """
         if self.history_file is not None:
             return anyio.Path(self.history_file)
-        # Use SyncPath.home() for path construction (no IO), then convert to anyio.Path
-        return anyio.Path(SyncPath.home() / ".cache" / "psi-agent" / "repl_history.txt")
+        # Use platformdirs for cross-platform cache directory
+        cache_dir = user_cache_dir("psi-agent")
+        return anyio.Path(cache_dir) / "repl_history.txt"
