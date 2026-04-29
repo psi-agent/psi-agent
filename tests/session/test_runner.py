@@ -268,3 +268,144 @@ async def test_reconstruct_tool_calls_multiple(config):
     assert len(result) == 2
     assert result[0]["function"]["name"] == "tool1"
     assert result[1]["function"]["name"] == "tool2"
+
+
+class TestRunnerWorkspaceChanges:
+    """Tests for workspace change handling."""
+
+    @pytest.mark.asyncio
+    async def test_handle_workspace_changes_tools(self, config):
+        """Test handling tool changes."""
+        runner = SessionRunner(config)
+        async with runner:
+            # Create a tool file
+            tools_dir = config.tools_dir()
+            tool_file = tools_dir / "new_tool.py"
+            await tool_file.write_text("async def tool(x: int) -> int: return x")
+
+            from psi_agent.session.workspace_watcher import ChangeSummary
+
+            changes = ChangeSummary(
+                tools_added=["new_tool"],
+                tools_modified=[],
+                tools_removed=[],
+                skills_added=[],
+                skills_modified=[],
+                skills_removed=[],
+                schedules_added=[],
+                schedules_modified=[],
+                schedules_removed=[],
+            )
+
+            await runner._handle_workspace_changes(changes)
+
+            # Tool should be loaded
+            assert "new_tool" in runner.registry.tools
+
+    @pytest.mark.asyncio
+    async def test_handle_workspace_changes_skills(self, config):
+        """Test handling skill changes rebuilds system prompt."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        runner = SessionRunner(config)
+        async with runner:
+            # Set up a mock system
+            runner._system = MagicMock()
+            runner._system.build_system_prompt = AsyncMock(return_value="New system prompt")
+
+            from psi_agent.session.workspace_watcher import ChangeSummary
+
+            changes = ChangeSummary(
+                tools_added=[],
+                tools_modified=[],
+                tools_removed=[],
+                skills_added=["skill1"],
+                skills_modified=[],
+                skills_removed=[],
+                schedules_added=[],
+                schedules_modified=[],
+                schedules_removed=[],
+            )
+
+            await runner._handle_workspace_changes(changes)
+
+            # System prompt should be rebuilt
+            assert runner._system_prompt_cache == "New system prompt"
+
+
+class TestRunnerStreaming:
+    """Tests for streaming request handling."""
+
+    @pytest.mark.asyncio
+    async def test_process_streaming_request(self, config):
+        """Test process_streaming_request returns stream generator."""
+        runner = SessionRunner(config)
+        async with runner:
+            # Mock streaming response
+            async def mock_stream():
+                yield b'data: {"choices": [{"delta": {"content": "Hello"}}]}\n\n'
+                yield b"data: [DONE]\n\n"
+
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.content = mock_stream()
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=None)
+
+            with patch.object(runner.client, "post", return_value=mock_response):
+                result = await runner.process_streaming_request({"role": "user", "content": "Hi"})
+
+                # Result should be an async generator
+                assert hasattr(result, "__aiter__")
+
+
+class TestRunnerCompleteFn:
+    """Tests for _complete_fn method."""
+
+    @pytest.mark.asyncio
+    async def test_complete_fn_success(self, config):
+        """Test _complete_fn returns response content."""
+        runner = SessionRunner(config)
+        async with runner:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(
+                return_value={"choices": [{"message": {"content": "Summary text"}}]}
+            )
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=None)
+
+            with patch.object(runner.client, "post", return_value=mock_response):
+                result = await runner._complete_fn([{"role": "user", "content": "Summarize"}])
+
+                assert result == "Summary text"
+
+    @pytest.mark.asyncio
+    async def test_complete_fn_error(self, config):
+        """Test _complete_fn handles error response."""
+        runner = SessionRunner(config)
+        async with runner:
+            mock_response = AsyncMock()
+            mock_response.status = 500
+            mock_response.text = AsyncMock(return_value="Error")
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=None)
+
+            with patch.object(runner.client, "post", return_value=mock_response):
+                result = await runner._complete_fn([{"role": "user", "content": "Summarize"}])
+
+                assert result == ""
+
+
+class TestRunnerScheduleExecutor:
+    """Tests for schedule executor integration."""
+
+    def test_set_schedule_executor(self, config):
+        """Test setting schedule executor."""
+        runner = SessionRunner(config)
+        from unittest.mock import MagicMock
+
+        executor = MagicMock()
+        runner.set_schedule_executor(executor)
+
+        assert runner._schedule_executor == executor

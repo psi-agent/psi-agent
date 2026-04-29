@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
+
 from psi_agent.ai.anthropic_messages.translator import (
+    translate_anthropic_stream,
     translate_anthropic_to_openai,
     translate_openai_to_anthropic,
 )
@@ -264,3 +267,167 @@ class TestStreamingTranslator:
 
         assert translator.translate_event("content_block_start", {}) is None
         assert translator.translate_event("content_block_stop", {}) is None
+
+    def test_content_block_delta_empty_text(self) -> None:
+        """Test content_block_delta with empty text produces no output."""
+        from psi_agent.ai.anthropic_messages.translator import StreamingTranslator
+
+        translator = StreamingTranslator()
+        translator._message_id = "msg_123"
+        translator._model = "claude-3"
+
+        result = translator.translate_event(
+            "content_block_delta",
+            {"delta": {"text": ""}},
+        )
+
+        assert result is None
+
+    def test_message_delta_without_stop_reason(self) -> None:
+        """Test message_delta without stop_reason produces no output."""
+        from psi_agent.ai.anthropic_messages.translator import StreamingTranslator
+
+        translator = StreamingTranslator()
+        translator._message_id = "msg_123"
+        translator._model = "claude-3"
+
+        result = translator.translate_event(
+            "message_delta",
+            {"delta": {}},
+        )
+
+        assert result is None
+
+    def test_unknown_event_type(self) -> None:
+        """Test unknown event type produces no output."""
+        from psi_agent.ai.anthropic_messages.translator import StreamingTranslator
+
+        translator = StreamingTranslator()
+
+        result = translator.translate_event("unknown_event", {})
+
+        assert result is None
+
+
+class TestTranslateOpenAIToAnthropicEdgeCases:
+    """Tests for edge cases in OpenAI to Anthropic translation."""
+
+    def test_system_message_with_content_blocks(self) -> None:
+        """Test system message with content blocks is extracted correctly."""
+        openai_request = {
+            "messages": [
+                {
+                    "role": "system",
+                    "content": [
+                        {"type": "text", "text": "You are "},
+                        {"type": "text", "text": "helpful."},
+                    ],
+                },
+                {"role": "user", "content": "Hello!"},
+            ],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert result["system"] == "You are  helpful."
+        assert len(result["messages"]) == 1
+
+    def test_non_string_non_list_content(self) -> None:
+        """Test non-string, non-list content is converted to string."""
+        openai_request = {
+            "messages": [
+                {"role": "user", "content": 12345},
+            ],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert result["messages"][0]["content"] == [{"type": "text", "text": "12345"}]
+
+    def test_empty_messages(self) -> None:
+        """Test empty messages list."""
+        openai_request = {"messages": []}
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert result["messages"] == []
+        assert result["max_tokens"] == 4096
+
+    def test_message_without_content(self) -> None:
+        """Test message without content field."""
+        openai_request = {
+            "messages": [{"role": "user"}],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert result["messages"][0]["content"] == [{"type": "text", "text": ""}]
+
+    def test_only_system_message(self) -> None:
+        """Test request with only system message."""
+        openai_request = {
+            "messages": [{"role": "system", "content": "System prompt"}],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert result["system"] == "System prompt"
+        assert result["messages"] == []
+
+
+class TestTranslateAnthropicStream:
+    """Tests for async stream translation."""
+
+    async def test_stream_translation(self) -> None:
+        """Test full stream translation."""
+        import json
+
+        async def mock_stream() -> AsyncGenerator[str]:
+            # message_start event
+            msg_start = json.dumps({"message": {"id": "msg_123", "model": "claude-3"}})
+            yield f"event: message_start\ndata: {msg_start}\n\n"
+            # content_block_delta event
+            delta = json.dumps({"delta": {"text": "Hello"}})
+            yield f"event: content_block_delta\ndata: {delta}\n\n"
+            # message_stop event
+            yield "event: message_stop\ndata: {}\n\n"
+
+        chunks = []
+        async for chunk in translate_anthropic_stream(mock_stream()):
+            chunks.append(chunk)
+
+        assert len(chunks) == 3  # message_start, content_block_delta, message_stop
+        assert '"id": "msg_123"' in chunks[0]
+        assert '"content": "Hello"' in chunks[1]
+        assert chunks[2] == "data: [DONE]\n\n"
+
+    async def test_stream_with_invalid_json(self) -> None:
+        """Test stream handles invalid JSON gracefully."""
+
+        async def mock_stream() -> AsyncGenerator[str]:
+            yield "event: message_start\ndata: invalid json\n\n"
+
+        chunks = []
+        async for chunk in translate_anthropic_stream(mock_stream()):
+            chunks.append(chunk)
+
+        # Should produce initial chunk even with invalid JSON data
+        assert len(chunks) == 1
+
+    async def test_stream_with_message_delta_stop_reason(self) -> None:
+        """Test stream with message_delta containing stop_reason."""
+        import json
+
+        async def mock_stream() -> AsyncGenerator[str]:
+            msg_start = json.dumps({"message": {"id": "msg_123", "model": "claude-3"}})
+            yield f"event: message_start\ndata: {msg_start}\n\n"
+            delta = json.dumps({"delta": {"stop_reason": "end_turn"}})
+            yield f"event: message_delta\ndata: {delta}\n\n"
+            yield "event: message_stop\ndata: {}\n\n"
+
+        chunks = []
+        async for chunk in translate_anthropic_stream(mock_stream()):
+            chunks.append(chunk)
+
+        assert len(chunks) == 3
+        assert '"finish_reason": "stop"' in chunks[1]

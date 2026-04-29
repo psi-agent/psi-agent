@@ -161,3 +161,37 @@ async def test_load_history_nonexistent_file():
 
         messages = await load_history_from_file(history_file)
         assert messages == []
+
+
+@pytest.mark.asyncio
+async def test_load_history_permission_error():
+    """Test loading history when permission denied."""
+    # Mock the permission error scenario
+    from unittest.mock import patch
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        history_file = anyio.Path(tmpdir) / "history.json"
+        await history_file.write_text('[{"role": "user", "content": "test"}]')
+
+        # Mock read_text to raise permission error
+        with patch.object(anyio.Path, "read_text", side_effect=PermissionError("Access denied")):
+            messages = await load_history_from_file(history_file)
+            assert messages == []
+
+
+@pytest.mark.asyncio
+async def test_save_history_write_error():
+    """Test saving history when write fails."""
+    from unittest.mock import patch
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        history_file = anyio.Path(tmpdir) / "history.json"
+        history = History(
+            messages=[{"role": "user", "content": "hello"}],
+            history_file=str(history_file),
+        )
+
+        # Mock write_text to raise error
+        with patch.object(anyio.Path, "write_text", side_effect=OSError("Write failed")):
+            # Should not raise error, just log it
+            await save_history_to_file(history, history_file)

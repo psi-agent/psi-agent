@@ -1,28 +1,26 @@
 ## Why
 
-Current test coverage is 59%, with several critical modules having very low coverage (session/runner: 27%, session/server: 30%, workspace/snapshot: 28%, workspace/umount: 31%). This poses risk for refactoring and makes it harder to catch regressions. Improving test coverage will increase confidence in code changes and help catch bugs early.
+当前测试覆盖率为 67%，存在多个覆盖率较低的模块。补充测试可以提高代码质量、捕获潜在 bug，并为未来重构提供安全网。本次变更专注于"容易写测试但目前没写"的部分，避免需要复杂 mock 或外部依赖的测试。
 
 ## What Changes
 
-- Add comprehensive tests for low-coverage modules
-- Focus on core business logic paths (session runner, tool execution, workspace operations)
-- Add edge case and error handling tests
-- Improve coverage for CLI entry points where practical
+- 为低覆盖率的纯函数和工具函数补充单元测试
+- 为错误处理分支补充测试
+- 为 CLI 参数解析补充测试（不涉及实际执行）
+- 为 helper 函数补充测试
 
 ## Capabilities
 
 ### New Capabilities
-- `test-coverage-analysis`: Define test coverage requirements and identify gaps
-- `session-runner-tests`: Comprehensive tests for session runner core logic
-- `workspace-snapshot-tests`: Tests for workspace snapshot functionality
-- `workspace-umount-tests`: Tests for workspace unmount functionality
-- `error-handling-tests`: Tests for error paths and edge cases across modules
+
+- `test-coverage-improvement`: 补充测试覆盖率，目标是将整体覆盖率从 67% 提升到 80%+
 
 ### Modified Capabilities
-- None (this is purely additive - adding tests, not changing behavior)
+
+无（仅添加测试，不修改现有功能）
 
 ## Impact
 
-- Test files in `tests/` directory (no production code changes)
-- CI pipeline may need adjustment for coverage thresholds
-- Developer workflow: more comprehensive test suite to run
+- 影响文件：`tests/` 目录下的测试文件
+- 不影响生产代码
+- 可能发现现有代码的 bug（需及时汇报）
