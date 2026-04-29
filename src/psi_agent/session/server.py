@@ -137,7 +137,7 @@ class SessionServer:
 
         # Handle both async generator and dict response
         if hasattr(stream_gen, "__aiter__"):
-            async for chunk in stream_gen:
+            async for chunk in stream_gen:  # ty: ignore[not-iterable]
                 await response.write(chunk.encode())
         else:
             # Non-streaming result (tool calls were involved)
