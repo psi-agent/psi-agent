@@ -15,9 +15,10 @@ import anyio
 CompleteFn = Callable[[list[dict[str, Any]]], Awaitable[str]]
 
 # Constants
-SILENT_TOKEN = "SILENT_TOKEN"
+SILENT_TOKEN = "NO_REPLY"
 HEARTBEAT_OK = "HEARTBEAT_OK"
 CACHE_BOUNDARY = "\n<!-- OPENCLAW_CACHE_BOUNDARY -->\n"
+TOOL_RESULT_REAL_CONVERSATION_LOOKBACK = 20
 
 # Block types that are not considered meaningful conversation content
 _NON_CONVERSATION_BLOCK_TYPES = frozenset(
@@ -132,6 +133,49 @@ Summarize the prefix to provide context for the retained suffix:
 Be concise. Focus on what's needed to understand the kept suffix."""
 
 
+def strip_heartbeat_token(text: str) -> tuple[str, bool]:
+    """Strip HEARTBEAT_OK from text edges, handling markup and punctuation.
+
+    Args:
+        text: The text to process.
+
+    Returns:
+        A tuple of (remaining_text, did_strip).
+    """
+    trimmed = text.strip()
+    if not trimmed:
+        return "", False
+
+    if HEARTBEAT_OK not in trimmed:
+        return trimmed, False
+
+    # Handle basic markdown wrappers: **HEARTBEAT_OK**, __HEARTBEAT_OK__, etc.
+    for wrapper in ["**", "__", "~~", "`"]:
+        if trimmed.startswith(wrapper) and trimmed.endswith(wrapper):
+            inner = trimmed[len(wrapper) : -len(wrapper)]
+            if inner.strip() == HEARTBEAT_OK:
+                return "", True
+            if inner.startswith(HEARTBEAT_OK):
+                rest = inner[len(HEARTBEAT_OK) :].strip()
+                return rest, True
+            if inner.endswith(HEARTBEAT_OK):
+                rest = inner[: -len(HEARTBEAT_OK)].strip()
+                return rest, True
+
+    # Strip at start
+    if trimmed.startswith(HEARTBEAT_OK):
+        rest = trimmed[len(HEARTBEAT_OK) :].strip()
+        return rest, True
+
+    # Strip at end with optional trailing punctuation
+    for suffix in ["", ".", "!", "-", "---", "!!!"]:
+        if trimmed.endswith(HEARTBEAT_OK + suffix):
+            rest = trimmed[: -len(HEARTBEAT_OK + suffix)].strip()
+            return rest, True
+
+    return trimmed, False
+
+
 def _has_meaningful_text(text: str) -> bool:
     """Check if text contains meaningful conversation content.
 
@@ -146,7 +190,11 @@ def _has_meaningful_text(text: str) -> bool:
         return False
     if trimmed == SILENT_TOKEN:
         return False
-    return trimmed != HEARTBEAT_OK
+    # Use strip_heartbeat_token to handle HEARTBEAT_OK with markup/punctuation
+    remaining, did_strip = strip_heartbeat_token(trimmed)
+    if did_strip:
+        return len(remaining.strip()) > 0
+    return True
 
 
 def has_meaningful_conversation_content(message: dict[str, Any]) -> bool:
@@ -194,11 +242,17 @@ def has_meaningful_conversation_content(message: dict[str, Any]) -> bool:
     return saw_meaningful_non_text_block
 
 
-def is_real_conversation_message(message: dict[str, Any]) -> bool:
+def is_real_conversation_message(
+    message: dict[str, Any],
+    history: list[dict[str, Any]],
+    index: int,
+) -> bool:
     """Determine if a message is part of a real user-AI dialogue.
 
     Args:
         message: A conversation message with role and content.
+        history: The full message history list.
+        index: The index of the message in the history.
 
     Returns:
         True if message is part of real conversation.
@@ -209,8 +263,15 @@ def is_real_conversation_message(message: dict[str, Any]) -> bool:
     if role in ("user", "assistant"):
         return has_meaningful_conversation_content(message)
 
-    # Tool results are not conversation messages
+    # Tool results: look back to find meaningful user message
     if role in ("tool", "toolResult", "tool_result"):
+        start = max(0, index - TOOL_RESULT_REAL_CONVERSATION_LOOKBACK)
+        for i in range(index - 1, start - 1, -1):
+            candidate = history[i]
+            if candidate.get("role") != "user":
+                continue
+            if has_meaningful_conversation_content(candidate):
+                return True
         return False
 
     return False
@@ -225,7 +286,7 @@ def _contains_real_conversation_messages(history: list[dict[str, Any]]) -> bool:
     Returns:
         True if at least one real conversation message exists.
     """
-    return any(is_real_conversation_message(msg) for msg in history)
+    return any(is_real_conversation_message(msg, history, i) for i, msg in enumerate(history))
 
 
 def _truncate_for_summary(text: str, max_chars: int) -> str:

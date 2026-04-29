@@ -9,11 +9,11 @@ The system SHALL provide a function `has_meaningful_conversation_content()` that
 - **THEN** the function returns `False`
 
 #### Scenario: Silent token content
-- **WHEN** message content is exactly `SILENT_TOKEN`
+- **WHEN** message content is exactly `SILENT_TOKEN` (`"NO_REPLY"`)
 - **THEN** the function returns `False`
 
 #### Scenario: Heartbeat-only content
-- **WHEN** message content contains only heartbeat-related text (e.g., `HEARTBEAT_OK`)
+- **WHEN** message content contains only heartbeat-related text (e.g., `HEARTBEAT_OK`) including cases with markdown wrappers or trailing punctuation
 - **THEN** the function returns `False`
 
 #### Scenario: Meaningful text content
@@ -34,7 +34,7 @@ The system SHALL provide a function `has_meaningful_conversation_content()` that
 
 ### Requirement: Identify real conversation messages
 
-The system SHALL provide a function `is_real_conversation_message()` that determines whether a message in the conversation history is part of a real user-AI dialogue.
+The system SHALL provide a function `is_real_conversation_message(message, history, index)` that determines whether a message in the conversation history is part of a real user-AI dialogue.
 
 #### Scenario: User message with meaningful content
 - **WHEN** message role is `user` and has meaningful conversation content
@@ -44,8 +44,12 @@ The system SHALL provide a function `is_real_conversation_message()` that determ
 - **WHEN** message role is `assistant` and has meaningful conversation content
 - **THEN** the function returns `True`
 
-#### Scenario: Tool result message
-- **WHEN** message role is `toolResult`, `tool`, or `tool_result`
+#### Scenario: Tool result message following meaningful user message
+- **WHEN** message role is `toolResult`, `tool`, or `tool_result` AND a user message with meaningful content exists within the lookback window (20 messages)
+- **THEN** the function returns `True`
+
+#### Scenario: Tool result message with no meaningful user message
+- **WHEN** message role is `toolResult`, `tool`, or `tool_result` AND no user message with meaningful content exists within the lookback window
 - **THEN** the function returns `False`
 
 #### Scenario: User message without meaningful content
@@ -55,6 +59,30 @@ The system SHALL provide a function `is_real_conversation_message()` that determ
 #### Scenario: Assistant message without meaningful content
 - **WHEN** message role is `assistant` but content contains only tool calls or thinking blocks
 - **THEN** the function returns `False`
+
+### Requirement: Heartbeat token stripping handles markup and punctuation
+
+The `_has_meaningful_text()` function SHALL properly strip `HEARTBEAT_OK` from text edges, including cases with markdown wrappers and trailing punctuation.
+
+#### Scenario: HEARTBEAT_OK with markdown wrapper
+- **WHEN** text is `"**HEARTBEAT_OK**"`
+- **THEN** the function SHALL identify it as non-meaningful (empty after stripping)
+
+#### Scenario: HEARTBEAT_OK with trailing punctuation
+- **WHEN** text is `"HEARTBEAT_OK."`
+- **THEN** the function SHALL identify it as non-meaningful
+
+#### Scenario: HEARTBEAT_OK with preceding content
+- **WHEN** text is `"Some text HEARTBEAT_OK"`
+- **THEN** the function SHALL identify `"Some text"` as meaningful content
+
+### Requirement: Silent reply token matches OpenClaw
+
+The `SILENT_TOKEN` constant SHALL be `"NO_REPLY"` to match OpenClaw's `SILENT_REPLY_TOKEN`.
+
+#### Scenario: Silent token value
+- **WHEN** checking for silent reply
+- **THEN** the token SHALL be `"NO_REPLY"` (not `"SILENT_TOKEN"`)
 
 ### Requirement: Skip compaction for non-real conversation
 
