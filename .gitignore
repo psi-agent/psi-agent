@@ -23,6 +23,7 @@ ENV/
 
 .pytest_cache/
 .coverage
+coverage.xml
 
 # Project
 
