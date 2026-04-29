@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from unittest.mock import patch
+from uuid import uuid4
 
 import anyio
 import pytest
 
+from psi_agent.workspace.manifest import Manifest
 from psi_agent.workspace.snapshot.api import SnapshotError, snapshot
 
 
@@ -80,10 +82,6 @@ class TestSnapshot:
             patch("psi_agent.workspace.snapshot.api._extract_squashfs") as mock_extract,
             patch("psi_agent.workspace.snapshot.api._create_squashfs") as mock_create,
         ):
-            from uuid import uuid4
-
-            from psi_agent.workspace.manifest import Manifest
-
             mock_manifest = Manifest(layers={}, default=uuid4())
             mock_read.return_value = mock_manifest
             mock_extract.return_value = None

@@ -22,7 +22,6 @@ async def test_send_message_request_format():
     """Test that request is properly formatted."""
     # This test verifies the function exists and has correct signature
     # Integration tests would require a running session
-
     sig = inspect.signature(send_message)
     params = list(sig.parameters.keys())
 
