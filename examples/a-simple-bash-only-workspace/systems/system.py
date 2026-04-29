@@ -2,7 +2,6 @@
 
 import re
 from collections.abc import Awaitable, Callable
-from pathlib import Path
 from typing import Any
 
 import anyio
@@ -67,7 +66,7 @@ def _estimate_tokens(message: dict[str, Any]) -> int:
 class System:
     """Simple workspace system configuration."""
 
-    def __init__(self, workspace_dir: Path) -> None:
+    def __init__(self, workspace_dir: anyio.Path) -> None:
         """Initialize the System instance.
 
         Args:
@@ -88,16 +87,16 @@ class System:
         skills_dir = self._workspace_dir / "skills"
         skill_descriptions: list[str] = []
 
-        if await anyio.Path(skills_dir).exists():
-            async for skill_path in anyio.Path(skills_dir).iterdir():
-                if await anyio.Path(skill_path).is_dir():
+        if await skills_dir.exists():
+            async for skill_path in skills_dir.iterdir():
+                if await skill_path.is_dir():
                     skill_md = skill_path / "SKILL.md"
-                    if await anyio.Path(skill_md).exists():
+                    if await skill_md.exists():
                         description = await _parse_skill_description(skill_md)
                         if description:
                             skill_descriptions.append(f"- {skill_path.name}: {description}")
 
-        workspace_resolved = await anyio.Path(self._workspace_dir).resolve()
+        workspace_resolved = await self._workspace_dir.resolve()
         system_prompt = f"""You are a helpful assistant with access to tools and skills.
 
 ## Workspace

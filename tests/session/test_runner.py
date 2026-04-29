@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
+from pathlib import Path as SyncPath
 from unittest.mock import AsyncMock, patch
 
 import anyio
@@ -17,7 +17,7 @@ from psi_agent.session.runner import SessionRunner, load_system_prompt
 def config():
     """Create test config."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        workspace = Path(tmpdir)
+        workspace = SyncPath(tmpdir)
         (workspace / "tools").mkdir()
 
         yield SessionConfig(

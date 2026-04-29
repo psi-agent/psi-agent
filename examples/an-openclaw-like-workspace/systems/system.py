@@ -5,7 +5,6 @@ import platform
 import sys
 from collections.abc import Awaitable, Callable
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 import anyio
@@ -154,7 +153,7 @@ def _strip_frontmatter(content: str) -> str:
     return trimmed
 
 
-async def _read_bootstrap_file(file_path: anyio.Path | Path) -> str | None:
+async def _read_bootstrap_file(file_path: anyio.Path) -> str | None:
     """Read a bootstrap file asynchronously.
 
     Args:
@@ -163,7 +162,7 @@ async def _read_bootstrap_file(file_path: anyio.Path | Path) -> str | None:
     Returns:
         File content with frontmatter stripped, or None if file doesn't exist.
     """
-    if not await anyio.Path(file_path).exists():
+    if not await file_path.exists():
         return None
     try:
         async with await anyio.open_file(file_path, encoding="utf-8") as f:
@@ -271,13 +270,13 @@ def _build_safety_section() -> str:
     return "\n".join(lines)
 
 
-async def _build_workspace_section(workspace_dir: Path) -> str:
+async def _build_workspace_section(workspace_dir: anyio.Path) -> str:
     """Build the Workspace section.
 
     Args:
         workspace_dir: Path to the workspace directory.
     """
-    resolved_dir = await anyio.Path(workspace_dir).resolve()
+    resolved_dir = await workspace_dir.resolve()
     lines = [
         "## Workspace",
         f"Your working directory is: {resolved_dir}",
@@ -341,7 +340,7 @@ def _build_datetime_section(timezone: str = "UTC") -> str:
     return "\n".join(lines)
 
 
-async def _build_skills_section(workspace: Path) -> str:
+async def _build_skills_section(workspace: anyio.Path) -> str:
     """Build the Skills section by scanning skills directory.
 
     Args:
@@ -350,11 +349,11 @@ async def _build_skills_section(workspace: Path) -> str:
     skills_dir = workspace / "skills"
     skill_descriptions: list[str] = []
 
-    if await anyio.Path(skills_dir).exists():
-        async for skill_path in anyio.Path(skills_dir).iterdir():
-            if await anyio.Path(skill_path).is_dir():
+    if await skills_dir.exists():
+        async for skill_path in skills_dir.iterdir():
+            if await skill_path.is_dir():
                 skill_md = skill_path / "SKILL.md"
-                if await anyio.Path(skill_md).exists():
+                if await skill_md.exists():
                     content = await _read_bootstrap_file(skill_md)
                     if content:
                         # Extract first line as description
@@ -422,7 +421,7 @@ def _build_silent_replies_section() -> str:
     return "\n".join(lines)
 
 
-async def _build_project_context_section(workspace: Path, is_main_session: bool) -> str:
+async def _build_project_context_section(workspace: anyio.Path, is_main_session: bool) -> str:
     """Build the Project Context section with bootstrap files.
 
     Args:
@@ -625,7 +624,7 @@ def _build_summarization_prompt(messages: list[dict[str, Any]]) -> str:
 class System:
     """Workspace system configuration and state management."""
 
-    def __init__(self, workspace_dir: Path) -> None:
+    def __init__(self, workspace_dir: anyio.Path) -> None:
         """Initialize the System instance.
 
         Args:

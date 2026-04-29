@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+import tempfile
+from pathlib import Path as SyncPath
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -81,10 +82,9 @@ class TestAnthropicMessagesServer:
     @pytest.mark.asyncio
     async def test_start_creates_socket(self, config: AnthropicMessagesConfig) -> None:
         """Test that start creates socket file."""
-        import tempfile
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            socket_path = Path(tmpdir) / "test.sock"
+            socket_path = SyncPath(tmpdir) / "test.sock"
             config = AnthropicMessagesConfig(
                 session_socket=str(socket_path),
                 model="claude-sonnet-4-20250514",

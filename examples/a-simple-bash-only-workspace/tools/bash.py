@@ -1,7 +1,8 @@
 """Async bash tool for executing shell commands."""
 
 import asyncio
-from pathlib import Path
+
+import anyio
 
 
 async def tool(command: str, timeout: int = 30, cwd: str | None = None) -> str:
@@ -16,7 +17,7 @@ async def tool(command: str, timeout: int = 30, cwd: str | None = None) -> str:
         Command output as string, or error message if execution fails.
     """
     try:
-        working_dir = Path(cwd) if cwd else None
+        working_dir = anyio.Path(cwd) if cwd else None
 
         process = await asyncio.create_subprocess_shell(
             command,
