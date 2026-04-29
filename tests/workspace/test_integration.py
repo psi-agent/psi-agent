@@ -7,8 +7,9 @@ Run with: sudo uv run pytest tests/workspace/test_integration.py -v
 from __future__ import annotations
 
 import os
-from pathlib import Path
+from pathlib import Path as SyncPath
 
+import anyio
 import pytest
 
 from psi_agent.workspace.pack.api import pack
@@ -19,49 +20,51 @@ from psi_agent.workspace.unpack.api import unpack
 class TestIntegration:
     """Integration tests for workspace components."""
 
-    async def test_pack_unpack_roundtrip(self, tmp_path: Path) -> None:
+    async def test_pack_unpack_roundtrip(self, tmp_path: SyncPath) -> None:
         """Pack and unpack should preserve workspace contents."""
         # Create input workspace
-        input_dir = tmp_path / "workspace"
-        input_dir.mkdir()
-        (input_dir / "tools").mkdir()
-        (input_dir / "tools" / "test.py").write_text("# test tool")
-        (input_dir / "skills").mkdir()
-        (input_dir / "skills" / "example").mkdir()
-        (input_dir / "skills" / "example" / "SKILL.md").write_text(
+        input_dir = anyio.Path(tmp_path) / "workspace"
+        await input_dir.mkdir()
+        await (input_dir / "tools").mkdir()
+        await (input_dir / "tools" / "test.py").write_text("# test tool")
+        await (input_dir / "skills").mkdir()
+        await (input_dir / "skills" / "example").mkdir()
+        await (input_dir / "skills" / "example" / "SKILL.md").write_text(
             "---\nname: test\n---\nTest skill"
         )
 
         # Pack
-        squashfs_file = tmp_path / "workspace.squashfs"
+        squashfs_file = anyio.Path(tmp_path) / "workspace.squashfs"
         await pack(input_dir, squashfs_file, tag="v1.0")
 
         # Unpack
-        output_dir = tmp_path / "unpacked"
+        output_dir = anyio.Path(tmp_path) / "unpacked"
         await unpack(squashfs_file, output_dir)
 
         # Verify contents
-        assert (output_dir / "manifest.json").exists()
+        assert await (output_dir / "manifest.json").exists()
         # The layer directory name is a UUID, so we check for any directory
-        layer_dirs = [d for d in output_dir.iterdir() if d.is_dir() and d.name != "manifest.json"]
+        layer_dirs = [
+            d async for d in output_dir.iterdir() if await d.is_dir() and d.name != "manifest.json"
+        ]
         assert len(layer_dirs) == 1
 
         layer_dir = layer_dirs[0]
-        assert (layer_dir / "tools" / "test.py").exists()
-        assert (layer_dir / "skills" / "example" / "SKILL.md").exists()
+        assert await (layer_dir / "tools" / "test.py").exists()
+        assert await (layer_dir / "skills" / "example" / "SKILL.md").exists()
 
 
 class TestNonPrivileged:
     """Tests that don't require root privileges."""
 
-    async def test_pack_creates_valid_squashfs(self, tmp_path: Path) -> None:
+    async def test_pack_creates_valid_squashfs(self, tmp_path: SyncPath) -> None:
         """Pack creates a valid squashfs file."""
-        input_dir = tmp_path / "workspace"
-        input_dir.mkdir()
-        (input_dir / "test.txt").write_text("hello")
+        input_dir = anyio.Path(tmp_path) / "workspace"
+        await input_dir.mkdir()
+        await (input_dir / "test.txt").write_text("hello")
 
-        squashfs_file = tmp_path / "workspace.squashfs"
+        squashfs_file = anyio.Path(tmp_path) / "workspace.squashfs"
         await pack(input_dir, squashfs_file)
 
-        assert squashfs_file.exists()
-        assert squashfs_file.stat().st_size > 0
+        assert await squashfs_file.exists()
+        assert (await squashfs_file.stat()).st_size > 0

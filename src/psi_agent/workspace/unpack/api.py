@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
 import anyio
 from loguru import logger
@@ -16,8 +15,8 @@ class UnpackError(Exception):
 
 
 async def unpack(
-    input_file: str | Path,
-    output_dir: str | Path,
+    input_file: str | anyio.Path,
+    output_dir: str | anyio.Path,
 ) -> None:
     """Unpack a squashfs image to a directory.
 
@@ -28,19 +27,19 @@ async def unpack(
     Raises:
         UnpackError: If unpack operation fails.
     """
-    input_path = Path(await anyio.Path(input_file).resolve())
-    output_path = Path(await anyio.Path(output_dir).resolve())
+    input_path = anyio.Path(await anyio.Path(input_file).resolve())
+    output_path = anyio.Path(await anyio.Path(output_dir).resolve())
 
     # Validate input file
-    if not await anyio.Path(input_path).exists():
+    if not await input_path.exists():
         raise UnpackError(f"Input file does not exist: {input_path}")
-    if not await anyio.Path(input_path).is_file():
+    if not await input_path.is_file():
         raise UnpackError(f"Input path is not a file: {input_path}")
 
     logger.info(f"Unpacking squashfs from {input_path} to {output_path}")
 
     # Create output directory
-    await anyio.Path(output_path).mkdir(parents=True, exist_ok=True)
+    await output_path.mkdir(parents=True, exist_ok=True)
 
     # Run unsquashfs command
     cmd = [

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
 import anyio
 from loguru import logger
@@ -16,7 +15,7 @@ class UmountError(Exception):
 
 
 async def umount(
-    mount_point: str | Path,
+    mount_point: str | anyio.Path,
 ) -> None:
     """Unmount an overlayfs workspace.
 
@@ -26,17 +25,17 @@ async def umount(
     Raises:
         UmountError: If umount operation fails.
     """
-    mount_path = Path(await anyio.Path(mount_point).resolve())
+    mount_path = anyio.Path(await anyio.Path(mount_point).resolve())
 
     # Validate mount point
-    if not await anyio.Path(mount_path).exists():
+    if not await mount_path.exists():
         raise UmountError(f"Mount point does not exist: {mount_path}")
 
     logger.info(f"Unmounting workspace at {mount_path}")
 
     # Read mount info
     mount_info_path = mount_path / ".psi-mount-info"
-    if not await anyio.Path(mount_info_path).exists():
+    if not await mount_info_path.exists():
         raise UmountError(f"Mount info file not found: {mount_info_path}")
 
     async with await anyio.open_file(mount_info_path) as f:
@@ -51,9 +50,9 @@ async def umount(
     except (SyntaxError, ValueError) as e:
         raise UmountError(f"Invalid mount info: {e}") from e
 
-    squashfs_mount = Path(mount_info["squashfs_mount"])
-    upper_dir = Path(mount_info["upper_dir"])
-    work_dir = Path(mount_info["work_dir"])
+    squashfs_mount = anyio.Path(mount_info["squashfs_mount"])
+    upper_dir = anyio.Path(mount_info["upper_dir"])
+    work_dir = anyio.Path(mount_info["work_dir"])
 
     # Unmount overlayfs
     await _unmount(mount_path)
@@ -67,12 +66,12 @@ async def umount(
     await _cleanup_directory(squashfs_mount)
 
     # Remove mount info file
-    await anyio.Path(mount_info_path).unlink()
+    await mount_info_path.unlink()
 
     logger.info(f"Successfully unmounted and cleaned up {mount_path}")
 
 
-async def _unmount(mount_point: Path) -> None:
+async def _unmount(mount_point: anyio.Path) -> None:
     """Unmount a filesystem.
 
     Args:
@@ -99,25 +98,25 @@ async def _unmount(mount_point: Path) -> None:
     logger.debug(f"umount output: {stderr.decode() if stderr else 'No output'}")
 
 
-async def _cleanup_directory(dir_path: Path) -> None:
+async def _cleanup_directory(dir_path: anyio.Path) -> None:
     """Remove a directory and its contents.
 
     Args:
         dir_path: Path to directory to remove.
     """
-    if not await anyio.Path(dir_path).exists():
+    if not await dir_path.exists():
         return
 
     try:
         # Remove directory contents
-        async for item in anyio.Path(dir_path).iterdir():
-            if await anyio.Path(item).is_dir():
-                await _cleanup_directory(Path(item))
+        async for item in dir_path.iterdir():
+            if await item.is_dir():
+                await _cleanup_directory(item)
             else:
-                await anyio.Path(item).unlink()
+                await item.unlink()
 
         # Remove empty directory
-        await anyio.Path(dir_path).rmdir()
+        await dir_path.rmdir()
         logger.debug(f"Cleaned up directory: {dir_path}")
     except Exception as e:
         logger.warning(f"Failed to cleanup directory {dir_path}: {e}")

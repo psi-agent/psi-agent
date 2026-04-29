@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import anyio
@@ -78,7 +77,7 @@ class ChangeSummary:
         }
 
 
-async def compute_file_hash(file_path: Path) -> str:
+async def compute_file_hash(file_path: anyio.Path) -> str:
     """Compute MD5 hash of a file.
 
     Args:
@@ -87,11 +86,11 @@ async def compute_file_hash(file_path: Path) -> str:
     Returns:
         MD5 hash string.
     """
-    content = await anyio.Path(file_path).read_bytes()
+    content = await file_path.read_bytes()
     return hashlib.md5(content).hexdigest()
 
 
-async def scan_tools_directory(tools_dir: Path) -> dict[str, tuple[Path, str]]:
+async def scan_tools_directory(tools_dir: anyio.Path) -> dict[str, tuple[anyio.Path, str]]:
     """Scan tools directory and return file info.
 
     Args:
@@ -100,21 +99,21 @@ async def scan_tools_directory(tools_dir: Path) -> dict[str, tuple[Path, str]]:
     Returns:
         Dict mapping tool name to (file_path, file_hash).
     """
-    if not await anyio.Path(tools_dir).exists():
+    if not await tools_dir.exists():
         return {}
 
-    tool_files: dict[str, tuple[Path, str]] = {}
+    tool_files: dict[str, tuple[anyio.Path, str]] = {}
 
-    async for file_path in anyio.Path(tools_dir).iterdir():
-        if await anyio.Path(file_path).is_file() and file_path.suffix == ".py":
+    async for file_path in tools_dir.iterdir():
+        if await file_path.is_file() and file_path.suffix == ".py":
             tool_name = file_path.stem
-            file_hash = await compute_file_hash(Path(file_path))
-            tool_files[tool_name] = (Path(file_path), file_hash)
+            file_hash = await compute_file_hash(file_path)
+            tool_files[tool_name] = (file_path, file_hash)
 
     return tool_files
 
 
-async def scan_skills_directory(skills_dir: Path) -> dict[str, tuple[Path, str]]:
+async def scan_skills_directory(skills_dir: anyio.Path) -> dict[str, tuple[anyio.Path, str]]:
     """Scan skills directory and return file info.
 
     Args:
@@ -123,23 +122,23 @@ async def scan_skills_directory(skills_dir: Path) -> dict[str, tuple[Path, str]]
     Returns:
         Dict mapping skill name to (skill_md_path, file_hash).
     """
-    if not await anyio.Path(skills_dir).exists():
+    if not await skills_dir.exists():
         return {}
 
-    skill_files: dict[str, tuple[Path, str]] = {}
+    skill_files: dict[str, tuple[anyio.Path, str]] = {}
 
-    async for entry in anyio.Path(skills_dir).iterdir():
-        if await anyio.Path(entry).is_dir():
+    async for entry in skills_dir.iterdir():
+        if await entry.is_dir():
             skill_md = entry / "SKILL.md"
-            if await anyio.Path(skill_md).exists():
+            if await skill_md.exists():
                 skill_name = entry.name
-                file_hash = await compute_file_hash(Path(skill_md))
-                skill_files[skill_name] = (Path(skill_md), file_hash)
+                file_hash = await compute_file_hash(skill_md)
+                skill_files[skill_name] = (skill_md, file_hash)
 
     return skill_files
 
 
-async def scan_schedules_directory(schedules_dir: Path) -> dict[str, tuple[Path, str]]:
+async def scan_schedules_directory(schedules_dir: anyio.Path) -> dict[str, tuple[anyio.Path, str]]:
     """Scan schedules directory and return file info.
 
     Args:
@@ -148,18 +147,18 @@ async def scan_schedules_directory(schedules_dir: Path) -> dict[str, tuple[Path,
     Returns:
         Dict mapping schedule name to (task_md_path, file_hash).
     """
-    if not await anyio.Path(schedules_dir).exists():
+    if not await schedules_dir.exists():
         return {}
 
-    schedule_files: dict[str, tuple[Path, str]] = {}
+    schedule_files: dict[str, tuple[anyio.Path, str]] = {}
 
-    async for entry in anyio.Path(schedules_dir).iterdir():
-        if await anyio.Path(entry).is_dir():
+    async for entry in schedules_dir.iterdir():
+        if await entry.is_dir():
             task_md = entry / "TASK.md"
-            if await anyio.Path(task_md).exists():
+            if await task_md.exists():
                 schedule_name = entry.name
-                file_hash = await compute_file_hash(Path(task_md))
-                schedule_files[schedule_name] = (Path(task_md), file_hash)
+                file_hash = await compute_file_hash(task_md)
+                schedule_files[schedule_name] = (task_md, file_hash)
 
     return schedule_files
 
@@ -167,7 +166,7 @@ async def scan_schedules_directory(schedules_dir: Path) -> dict[str, tuple[Path,
 class WorkspaceWatcher:
     """Watches workspace files for changes and detects modifications."""
 
-    def __init__(self, workspace: Path) -> None:
+    def __init__(self, workspace: anyio.Path) -> None:
         """Initialize the workspace watcher.
 
         Args:

@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pathlib import Path
+
+import anyio
 
 from psi_agent.session.schedule import Schedule
 
@@ -17,7 +18,7 @@ class TestSchedule:
             name="test-task",
             cron="0 9 * * *",
             content="Test task content",
-            task_dir=Path("/tmp/test"),
+            task_dir=anyio.Path("/tmp/test"),
         )
 
         assert schedule.name == "test-task"
@@ -32,7 +33,7 @@ class TestSchedule:
             description="A test task",
             cron="0 9 * * *",
             content="Test task content",
-            task_dir=Path("/tmp/test"),
+            task_dir=anyio.Path("/tmp/test"),
         )
 
         assert schedule.description == "A test task"
@@ -43,7 +44,7 @@ class TestSchedule:
             name="test-task",
             cron="0 9 * * *",  # 9am daily
             content="Test task content",
-            task_dir=Path("/tmp/test"),
+            task_dir=anyio.Path("/tmp/test"),
         )
 
         next_run = schedule.get_next_run()
@@ -57,7 +58,7 @@ class TestSchedule:
             name="test-task",
             cron="0 9 * * *",
             content="Test task content",
-            task_dir=Path("/tmp/test"),
+            task_dir=anyio.Path("/tmp/test"),
         )
 
         seconds = schedule.get_seconds_until_next_run()
@@ -71,7 +72,7 @@ class TestSchedule:
             name="test-task",
             cron="* * * * *",
             content="Test task content",
-            task_dir=Path("/tmp/test"),
+            task_dir=anyio.Path("/tmp/test"),
         )
 
         next_run = schedule.get_next_run()
@@ -85,7 +86,7 @@ class TestSchedule:
             name="test-task",
             cron="30 14 * * *",  # 2:30pm daily
             content="Test task content",
-            task_dir=Path("/tmp/test"),
+            task_dir=anyio.Path("/tmp/test"),
         )
 
         next_run = schedule.get_next_run()

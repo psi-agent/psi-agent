@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import anyio
 import pytest
 
 from psi_agent.session.config import SessionConfig
@@ -31,7 +32,7 @@ def config():
 async def test_load_system_prompt_no_file():
     """Test loading system prompt when no system.py exists."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        result = await load_system_prompt(Path(tmpdir))
+        result = await load_system_prompt(anyio.Path(tmpdir))
         assert result is None
 
 
@@ -39,12 +40,12 @@ async def test_load_system_prompt_no_file():
 async def test_load_system_prompt_with_file():
     """Test loading system prompt from system.py."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        workspace = Path(tmpdir)
+        workspace = anyio.Path(tmpdir)
         systems_dir = workspace / "systems"
-        systems_dir.mkdir()
+        await systems_dir.mkdir()
 
         system_file = systems_dir / "system.py"
-        system_file.write_text(
+        await system_file.write_text(
             """
 async def build_system_prompt() -> str:
     return "You are a helpful assistant."
@@ -59,12 +60,12 @@ async def build_system_prompt() -> str:
 async def test_load_system_prompt_no_function():
     """Test loading system prompt when function doesn't exist."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        workspace = Path(tmpdir)
+        workspace = anyio.Path(tmpdir)
         systems_dir = workspace / "systems"
-        systems_dir.mkdir()
+        await systems_dir.mkdir()
 
         system_file = systems_dir / "system.py"
-        system_file.write_text("# no function here\n")
+        await system_file.write_text("# no function here\n")
 
         result = await load_system_prompt(workspace)
         assert result is None
@@ -106,7 +107,7 @@ async def test_session_runner_loads_tools(config):
     # Create a tool file
     tools_dir = config.tools_dir()
     tool_file = tools_dir / "test_tool.py"
-    tool_file.write_text(
+    await tool_file.write_text(
         """
 async def tool(name: str) -> str:
     '''Test tool.

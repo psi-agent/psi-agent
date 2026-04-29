@@ -8,7 +8,6 @@ import inspect
 import re
 import sys
 from collections.abc import Callable, Coroutine
-from pathlib import Path
 from typing import Any
 
 import anyio
@@ -17,7 +16,7 @@ from loguru import logger
 from psi_agent.session.types import ToolRegistry, ToolSchema
 
 
-async def compute_file_hash(file_path: Path) -> str:
+async def compute_file_hash(file_path: anyio.Path) -> str:
     """Compute MD5 hash of a file.
 
     Args:
@@ -26,7 +25,7 @@ async def compute_file_hash(file_path: Path) -> str:
     Returns:
         MD5 hash string.
     """
-    content = await anyio.Path(file_path).read_bytes()
+    content = await file_path.read_bytes()
     return hashlib.md5(content).hexdigest()
 
 
@@ -155,7 +154,7 @@ def generate_tool_schema(
     }
 
 
-async def load_tool_from_file(file_path: Path) -> ToolSchema | None:
+async def load_tool_from_file(file_path: anyio.Path) -> ToolSchema | None:
     """Load a tool from a Python file.
 
     Args:
@@ -214,7 +213,7 @@ async def load_tool_from_file(file_path: Path) -> ToolSchema | None:
         return None
 
 
-async def scan_tools_directory(tools_dir: Path) -> dict[str, tuple[Path, str]]:
+async def scan_tools_directory(tools_dir: anyio.Path) -> dict[str, tuple[anyio.Path, str]]:
     """Scan tools directory and return file info.
 
     Args:
@@ -223,22 +222,22 @@ async def scan_tools_directory(tools_dir: Path) -> dict[str, tuple[Path, str]]:
     Returns:
         Dict mapping tool name to (file_path, file_hash).
     """
-    if not await anyio.Path(tools_dir).exists():
+    if not await tools_dir.exists():
         logger.debug(f"Tools directory does not exist: {tools_dir}")
         return {}
 
-    tool_files: dict[str, tuple[Path, str]] = {}
+    tool_files: dict[str, tuple[anyio.Path, str]] = {}
 
-    async for file_path in anyio.Path(tools_dir).iterdir():
-        if await anyio.Path(file_path).is_file() and file_path.suffix == ".py":
+    async for file_path in tools_dir.iterdir():
+        if await file_path.is_file() and file_path.suffix == ".py":
             tool_name = file_path.stem
-            file_hash = await compute_file_hash(Path(file_path))
-            tool_files[tool_name] = (Path(file_path), file_hash)
+            file_hash = await compute_file_hash(file_path)
+            tool_files[tool_name] = (file_path, file_hash)
 
     return tool_files
 
 
-async def load_all_tools(tools_dir: Path, registry: ToolRegistry) -> None:
+async def load_all_tools(tools_dir: anyio.Path, registry: ToolRegistry) -> None:
     """Load all tools from directory into registry.
 
     Args:
@@ -253,7 +252,7 @@ async def load_all_tools(tools_dir: Path, registry: ToolRegistry) -> None:
             registry.register(tool_schema)
 
 
-async def detect_and_update_tools(tools_dir: Path, registry: ToolRegistry) -> None:
+async def detect_and_update_tools(tools_dir: anyio.Path, registry: ToolRegistry) -> None:
     """Detect tool changes and update registry.
 
     Args:

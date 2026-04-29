@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path as SyncPath
 from uuid import uuid4
 
+import anyio
 import pytest
 
 from psi_agent.workspace.manifest import Layer, Manifest
@@ -58,19 +59,19 @@ class TestResolveTargetLayer:
 class TestMount:
     """Tests for mount function."""
 
-    async def test_mount_nonexistent_input(self, tmp_path: Path) -> None:
+    async def test_mount_nonexistent_input(self, tmp_path: SyncPath) -> None:
         """Mount raises error for nonexistent input file."""
-        output_dir = tmp_path / "mounted"
+        output_dir = anyio.Path(tmp_path) / "mounted"
 
         with pytest.raises(MountError, match="does not exist"):
-            await mount(tmp_path / "nonexistent.squashfs", output_dir)
+            await mount(anyio.Path(tmp_path) / "nonexistent.squashfs", output_dir)
 
-    async def test_mount_directory_as_input(self, tmp_path: Path) -> None:
+    async def test_mount_directory_as_input(self, tmp_path: SyncPath) -> None:
         """Mount raises error when input is a directory."""
-        input_dir = tmp_path / "input"
-        input_dir.mkdir()
+        input_dir = anyio.Path(tmp_path) / "input"
+        await input_dir.mkdir()
 
-        output_dir = tmp_path / "mounted"
+        output_dir = anyio.Path(tmp_path) / "mounted"
 
         with pytest.raises(MountError, match="not a file"):
             await mount(input_dir, output_dir)

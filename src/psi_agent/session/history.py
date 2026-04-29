@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 
 import anyio
@@ -12,7 +11,7 @@ from loguru import logger
 from psi_agent.session.types import History
 
 
-async def load_history_from_file(history_file: Path | anyio.Path) -> list[dict[str, Any]]:
+async def load_history_from_file(history_file: anyio.Path) -> list[dict[str, Any]]:
     """Load history from JSON file.
 
     Args:
@@ -21,12 +20,12 @@ async def load_history_from_file(history_file: Path | anyio.Path) -> list[dict[s
     Returns:
         List of messages, empty list if file doesn't exist or is corrupted.
     """
-    if not await anyio.Path(history_file).exists():
+    if not await history_file.exists():
         logger.debug(f"History file does not exist: {history_file}")
         return []
 
     try:
-        content = await anyio.Path(history_file).read_text()
+        content = await history_file.read_text()
         messages = json.loads(content)
         logger.info(f"Loaded {len(messages)} messages from history file")
         return messages
@@ -38,7 +37,7 @@ async def load_history_from_file(history_file: Path | anyio.Path) -> list[dict[s
         return []
 
 
-async def save_history_to_file(history: History, history_file: Path | anyio.Path) -> None:
+async def save_history_to_file(history: History, history_file: anyio.Path) -> None:
     """Save history to JSON file.
 
     Args:
@@ -47,7 +46,7 @@ async def save_history_to_file(history: History, history_file: Path | anyio.Path
     """
     try:
         content = json.dumps(history.messages, ensure_ascii=False, indent=2)
-        await anyio.Path(history_file).write_text(content)
+        await history_file.write_text(content)
         logger.debug(f"Saved {len(history.messages)} messages to history file")
     except Exception as e:
         logger.error(f"Failed to save history file: {e}")

@@ -6,7 +6,6 @@ import asyncio
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 import anyio
@@ -32,7 +31,7 @@ class Schedule:
     name: str
     cron: str
     content: str
-    task_dir: Path
+    task_dir: anyio.Path
     description: str = ""
     _croniter: croniter.croniter | None = field(default=None, repr=False, compare=False)
 
@@ -92,7 +91,7 @@ def parse_frontmatter(content: str) -> tuple[dict[str, str], str]:
     return frontmatter, remaining
 
 
-async def load_schedule(task_dir: Path) -> Schedule | None:
+async def load_schedule(task_dir: anyio.Path) -> Schedule | None:
     """Load a schedule from a task directory.
 
     Args:
@@ -102,7 +101,7 @@ async def load_schedule(task_dir: Path) -> Schedule | None:
         Schedule object, or None if invalid.
     """
     task_file = task_dir / "TASK.md"
-    if not await anyio.Path(task_file).exists():
+    if not await task_file.exists():
         logger.debug(f"No TASK.md in {task_dir}")
         return None
 
@@ -133,7 +132,7 @@ async def load_schedule(task_dir: Path) -> Schedule | None:
         return None
 
 
-async def load_schedules(workspace: Path) -> list[Schedule]:
+async def load_schedules(workspace: anyio.Path) -> list[Schedule]:
     """Load all schedules from workspace.
 
     Args:
@@ -143,14 +142,14 @@ async def load_schedules(workspace: Path) -> list[Schedule]:
         List of valid Schedule objects.
     """
     schedules_dir = workspace / "schedules"
-    if not await anyio.Path(schedules_dir).exists():
+    if not await schedules_dir.exists():
         logger.debug("No schedules directory in workspace")
         return []
 
     schedules = []
-    async for entry in anyio.Path(schedules_dir).iterdir():
-        if await anyio.Path(entry).is_dir():
-            schedule = await load_schedule(Path(entry))
+    async for entry in schedules_dir.iterdir():
+        if await entry.is_dir():
+            schedule = await load_schedule(entry)
             if schedule is not None:
                 schedules.append(schedule)
                 logger.info(f"Loaded schedule: {schedule.name} (cron: {schedule.cron})")

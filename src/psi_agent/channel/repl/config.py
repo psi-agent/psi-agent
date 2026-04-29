@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path as SyncPath
+
+import anyio
 
 
 @dataclass
@@ -18,16 +20,17 @@ class ReplConfig:
     session_socket: str
     history_file: str | None = None
 
-    def socket_path(self) -> Path:
+    def socket_path(self) -> anyio.Path:
         """Get the socket path as a Path object."""
-        return Path(self.session_socket)
+        return anyio.Path(self.session_socket)
 
-    def get_history_path(self) -> Path:
+    def get_history_path(self) -> anyio.Path:
         """Get the history file path.
 
         Returns the configured history file path or the default path
         at ~/.cache/psi-agent/repl_history.txt.
         """
         if self.history_file is not None:
-            return Path(self.history_file)
-        return Path.home() / ".cache" / "psi-agent" / "repl_history.txt"
+            return anyio.Path(self.history_file)
+        # Use SyncPath.home() for path construction (no IO), then convert to anyio.Path
+        return anyio.Path(SyncPath.home() / ".cache" / "psi-agent" / "repl_history.txt")
