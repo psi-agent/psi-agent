@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
-from pathlib import Path as SyncPath
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -16,13 +16,13 @@ from psi_agent.session.server import SessionServer
 def config():
     """Create test config."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        workspace = SyncPath(tmpdir)
-        (workspace / "tools").mkdir()
+        tools_dir = os.path.join(tmpdir, "tools")
+        os.makedirs(tools_dir)
 
         yield SessionConfig(
-            channel_socket=str(workspace / "channel.sock"),
-            ai_socket=str(workspace / "ai.sock"),
-            workspace=str(workspace),
+            channel_socket=os.path.join(tmpdir, "channel.sock"),
+            ai_socket=os.path.join(tmpdir, "ai.sock"),
+            workspace=tmpdir,
             history_file=None,
         )
 

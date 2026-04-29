@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path as SyncPath
-
 import anyio
 import pytest
 
@@ -14,7 +12,7 @@ from psi_agent.workspace.unpack.api import UnpackError, unpack
 class TestUnpack:
     """Tests for unpack function."""
 
-    async def test_unpack_creates_directory(self, tmp_path: SyncPath) -> None:
+    async def test_unpack_creates_directory(self, tmp_path) -> None:
         """Unpack creates directory with squashfs contents."""
         workspace = anyio.Path(tmp_path)
         # Create and pack a workspace
@@ -34,7 +32,7 @@ class TestUnpack:
         assert await output_dir.exists()
         assert await (output_dir / "manifest.json").exists()
 
-    async def test_unpack_nonexistent_input(self, tmp_path: SyncPath) -> None:
+    async def test_unpack_nonexistent_input(self, tmp_path) -> None:
         """Unpack raises error for nonexistent input file."""
         workspace = anyio.Path(tmp_path)
         output_dir = workspace / "output"
@@ -42,7 +40,7 @@ class TestUnpack:
         with pytest.raises(UnpackError, match="does not exist"):
             await unpack(workspace / "nonexistent.squashfs", output_dir)
 
-    async def test_unpack_directory_as_input(self, tmp_path: SyncPath) -> None:
+    async def test_unpack_directory_as_input(self, tmp_path) -> None:
         """Unpack raises error when input is a directory."""
         workspace = anyio.Path(tmp_path)
         input_dir = workspace / "input"

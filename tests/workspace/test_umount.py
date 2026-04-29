@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path as SyncPath
 from unittest.mock import patch
 
 import anyio
@@ -14,12 +13,12 @@ from psi_agent.workspace.umount.api import UmountError, umount
 class TestUmount:
     """Tests for umount function."""
 
-    async def test_umount_nonexistent_mount_point(self, tmp_path: SyncPath) -> None:
+    async def test_umount_nonexistent_mount_point(self, tmp_path) -> None:
         """Umount raises error for nonexistent mount point."""
         with pytest.raises(UmountError, match="does not exist"):
             await umount(anyio.Path(tmp_path) / "nonexistent")
 
-    async def test_umount_missing_mount_info(self, tmp_path: SyncPath) -> None:
+    async def test_umount_missing_mount_info(self, tmp_path) -> None:
         """Umount raises error when mount info file is missing."""
         mount_dir = anyio.Path(tmp_path) / "mounted"
         await mount_dir.mkdir()
@@ -27,7 +26,7 @@ class TestUmount:
         with pytest.raises(UmountError, match="Mount info file not found"):
             await umount(mount_dir)
 
-    async def test_umount_invalid_mount_info(self, tmp_path: SyncPath) -> None:
+    async def test_umount_invalid_mount_info(self, tmp_path) -> None:
         """Umount raises error when mount info is invalid."""
         mount_dir = anyio.Path(tmp_path) / "mounted"
         await mount_dir.mkdir()
@@ -39,7 +38,7 @@ class TestUmount:
         with pytest.raises(UmountError, match="Invalid mount info"):
             await umount(mount_dir)
 
-    async def test_umount_valid_mount_info_parse(self, tmp_path: SyncPath) -> None:
+    async def test_umount_valid_mount_info_parse(self, tmp_path) -> None:
         """Umount correctly parses valid mount info."""
         mount_dir = anyio.Path(tmp_path) / "mounted"
         await mount_dir.mkdir()
