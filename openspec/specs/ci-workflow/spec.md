@@ -1,5 +1,7 @@
-## ADDED Requirements
+## Purpose
 
+Define the CI workflow requirements for automated code quality checks and testing.
+## Requirements
 ### Requirement: CI runs on any push and pull request
 
 The CI workflow SHALL run on every push to any branch, and on every pull request.
@@ -63,3 +65,18 @@ The CI workflow SHALL use `uv` for Python environment setup and dependency insta
 #### Scenario: uv installs dependencies correctly
 - **WHEN** the CI workflow starts
 - **THEN** uv installs Python 3.14 and all dependencies from pyproject.toml
+
+### Requirement: Test coverage step
+
+The CI workflow SHALL run pytest with coverage and generate XML report with branch coverage.
+
+#### Scenario: Coverage report generation
+- **WHEN** the test step runs
+- **THEN** pytest executes with `--cov-report=xml --cov=src/psi_agent --cov-branch`
+- **AND** coverage.xml is generated with line and branch coverage data
+
+#### Scenario: Coverage upload after tests
+- **WHEN** tests complete successfully
+- **THEN** coverage.xml is uploaded to Codecov
+- **AND** upload failure does not fail the CI
+

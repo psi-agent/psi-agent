@@ -33,7 +33,13 @@ jobs:
         run: uv run pytest
 
       - name: Test coverage
-        run: uv run pytest --cov=src/psi_agent --cov-fail-under=60
+        run: uv run pytest --cov-report=xml --cov=src/psi_agent --cov-branch
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: psi-agent/psi-agent
 
   publish:
     runs-on: ubuntu-latest
