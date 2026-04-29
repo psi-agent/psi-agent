@@ -16,7 +16,19 @@ CompleteFn = Callable[[list[dict[str, Any]]], Awaitable[str]]
 
 # Constants
 SILENT_TOKEN = "SILENT_TOKEN"
+HEARTBEAT_OK = "HEARTBEAT_OK"
 CACHE_BOUNDARY = "\n<!-- OPENCLAW_CACHE_BOUNDARY -->\n"
+
+# Block types that are not considered meaningful conversation content
+_NON_CONVERSATION_BLOCK_TYPES = frozenset(
+    [
+        "toolCall",
+        "toolUse",
+        "functionCall",
+        "thinking",
+        "reasoning",
+    ]
+)
 
 # Summarization constants
 _TOOL_RESULT_MAX_CHARS = 2000
@@ -118,6 +130,102 @@ Summarize the prefix to provide context for the retained suffix:
 - [Information needed to understand the retained recent work]
 
 Be concise. Focus on what's needed to understand the kept suffix."""
+
+
+def _has_meaningful_text(text: str) -> bool:
+    """Check if text contains meaningful conversation content.
+
+    Args:
+        text: The text to check.
+
+    Returns:
+        True if text is meaningful, False otherwise.
+    """
+    trimmed = text.strip()
+    if not trimmed:
+        return False
+    if trimmed == SILENT_TOKEN:
+        return False
+    return trimmed != HEARTBEAT_OK
+
+
+def has_meaningful_conversation_content(message: dict[str, Any]) -> bool:
+    """Determine if a message contains meaningful user-AI dialogue content.
+
+    A message has meaningful content if it contains non-empty text that is
+    not SILENT_TOKEN or HEARTBEAT_OK, or contains non-tool-call/thinking blocks.
+
+    Args:
+        message: A conversation message with role and content.
+
+    Returns:
+        True if message contains meaningful conversation content.
+    """
+    content = message.get("content")
+
+    if isinstance(content, str):
+        return _has_meaningful_text(content)
+
+    if not isinstance(content, list):
+        return False
+
+    saw_meaningful_non_text_block = False
+
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+
+        block_type = block.get("type")
+
+        # Text blocks: check if meaningful
+        if block_type == "text":
+            text = block.get("text", "")
+            if isinstance(text, str) and _has_meaningful_text(text):
+                return True
+            continue
+
+        # Non-conversation block types don't count as meaningful
+        if block_type in _NON_CONVERSATION_BLOCK_TYPES:
+            continue
+
+        # Other block types (image, etc.) are meaningful
+        saw_meaningful_non_text_block = True
+
+    return saw_meaningful_non_text_block
+
+
+def is_real_conversation_message(message: dict[str, Any]) -> bool:
+    """Determine if a message is part of a real user-AI dialogue.
+
+    Args:
+        message: A conversation message with role and content.
+
+    Returns:
+        True if message is part of real conversation.
+    """
+    role = message.get("role")
+
+    # User and assistant messages: check for meaningful content
+    if role in ("user", "assistant"):
+        return has_meaningful_conversation_content(message)
+
+    # Tool results are not conversation messages
+    if role in ("tool", "toolResult", "tool_result"):
+        return False
+
+    return False
+
+
+def _contains_real_conversation_messages(history: list[dict[str, Any]]) -> bool:
+    """Check if history contains any real conversation messages.
+
+    Args:
+        history: List of conversation messages.
+
+    Returns:
+        True if at least one real conversation message exists.
+    """
+    return any(is_real_conversation_message(msg) for msg in history)
 
 
 def _truncate_for_summary(text: str, max_chars: int) -> str:
@@ -719,11 +827,12 @@ class System:
         """Compact conversation history using LLM summarization.
 
         Implements OpenClaw's compaction algorithm:
-        1. Calculate total tokens in history
-        2. If under max_tokens, return unchanged
-        3. Find cut point by walking backwards, accumulating tokens
-        4. Handle split turn (cut at assistant message) if needed
-        5. Generate summaries for old messages
+        1. Check for real conversation content (skip if none)
+        2. Calculate total tokens in history
+        3. If under max_tokens, return unchanged
+        4. Find cut point by walking backwards, accumulating tokens
+        5. Handle split turn (cut at assistant message) if needed
+        6. Generate summaries for old messages
 
         Uses previous summary for incremental update if available.
 
@@ -738,6 +847,10 @@ class System:
         Returns:
             Compacted history list with summary message(s) and recent messages.
         """
+        # Skip compaction if no real conversation messages exist
+        if not _contains_real_conversation_messages(history):
+            return history
+
         if keep_recent_tokens is None:
             keep_recent_tokens = max_tokens // 2
 
