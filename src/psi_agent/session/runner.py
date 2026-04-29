@@ -14,7 +14,7 @@ from loguru import logger
 
 from psi_agent.session.config import SessionConfig
 from psi_agent.session.history import initialize_history, persist_history
-from psi_agent.session.schedule import Schedule, ScheduleExecutor
+from psi_agent.session.schedule import Schedule, ScheduleExecutor, load_schedule
 from psi_agent.session.tool_executor import execute_tools_parallel
 from psi_agent.session.tool_loader import detect_and_update_tools, load_all_tools
 from psi_agent.session.types import History, ToolRegistry
@@ -209,9 +209,6 @@ class SessionRunner:
         Returns:
             Schedule object, or None if invalid.
         """
-        # Import here to avoid circular dependency
-        from psi_agent.session.schedule import load_schedule
-
         return await load_schedule(task_dir)
 
     async def _complete_fn(self, messages: list[dict[str, Any]]) -> str:

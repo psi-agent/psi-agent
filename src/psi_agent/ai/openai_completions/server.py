@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from collections.abc import AsyncGenerator
+from typing import Any, cast
 
 import anyio
 from aiohttp import web
@@ -87,8 +88,6 @@ class OpenAICompletionsServer:
         Returns:
             The HTTP response.
         """
-        from collections.abc import AsyncGenerator
-
         assert self.client is not None  # Already checked in handler
         result = await self.client.chat_completions(body, stream=False)
 
@@ -116,9 +115,6 @@ class OpenAICompletionsServer:
         Returns:
             The streaming HTTP response.
         """
-        from collections.abc import AsyncGenerator
-        from typing import cast
-
         assert self.client is not None  # Already checked in handler
 
         response = web.StreamResponse()

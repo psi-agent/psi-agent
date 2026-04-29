@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import asyncio
 
 import anyio
@@ -38,10 +39,6 @@ async def umount(
 
     async with await anyio.open_file(mount_info_path) as f:
         info_content = await f.read()
-
-    # Parse mount info (simple dict-like string)
-    # Format: {'squashfs_mount': '/tmp/...', 'upper_dir': '/tmp/...', 'work_dir': '/tmp/...'}
-    import ast
 
     try:
         mount_info = ast.literal_eval(info_content)

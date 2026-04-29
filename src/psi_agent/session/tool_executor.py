@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -64,8 +65,6 @@ async def execute_tools_parallel(
     Returns:
         List of tool result messages ready for LLM.
     """
-    import asyncio
-
     tasks = []
     tool_call_ids = []
 

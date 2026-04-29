@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from collections.abc import AsyncGenerator
+from typing import Any, cast
 
 import anyio
 from aiohttp import web
@@ -88,8 +89,6 @@ class AnthropicMessagesServer:
         Returns:
             The HTTP response.
         """
-        from collections.abc import AsyncGenerator
-
         assert self.client is not None
         result = await self.client.messages(body, stream=False)
 
@@ -117,9 +116,6 @@ class AnthropicMessagesServer:
         Returns:
             The streaming HTTP response.
         """
-        from collections.abc import AsyncGenerator
-        from typing import cast
-
         assert self.client is not None
 
         response = web.StreamResponse()
