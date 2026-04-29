@@ -16,7 +16,7 @@ from psi_agent.session.tool_loader import (
 
 
 @pytest.mark.asyncio
-async def test_compute_file_hash():
+async def test_compute_file_hash() -> None:
     """Test file hash computation."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write("# test file\n")
@@ -30,7 +30,7 @@ async def test_compute_file_hash():
         assert hash1 != hash2  # Different content = different hash
 
 
-def test_parse_google_docstring():
+def test_parse_google_docstring() -> None:
     """Test Google docstring parsing."""
     docstring = """Read file content asynchronously.
 
@@ -47,14 +47,14 @@ def test_parse_google_docstring():
     assert params["encoding"] == "File encoding to use."
 
 
-def test_parse_google_docstring_empty():
+def test_parse_google_docstring_empty() -> None:
     """Test empty docstring parsing."""
     description, params = parse_google_docstring("")
     assert description == ""
     assert params == {}
 
 
-def test_python_type_to_openai_type():
+def test_python_type_to_openai_type() -> None:
     """Test Python type to OpenAI type conversion."""
     assert python_type_to_openai_type(str) == "string"
     assert python_type_to_openai_type(int) == "integer"
@@ -66,7 +66,7 @@ def test_python_type_to_openai_type():
 
 
 @pytest.mark.asyncio
-async def test_scan_tools_directory():
+async def test_scan_tools_directory() -> None:
     """Test tools directory scanning."""
     with tempfile.TemporaryDirectory() as tmpdir:
         tools_dir = Path(tmpdir)
@@ -87,7 +87,7 @@ async def test_scan_tools_directory():
 
 
 @pytest.mark.asyncio
-async def test_scan_tools_directory_empty():
+async def test_scan_tools_directory_empty() -> None:
     """Test scanning empty directory."""
     with tempfile.TemporaryDirectory() as tmpdir:
         result = await scan_tools_directory(Path(tmpdir))
@@ -95,7 +95,7 @@ async def test_scan_tools_directory_empty():
 
 
 @pytest.mark.asyncio
-async def test_scan_tools_directory_nonexistent():
+async def test_scan_tools_directory_nonexistent() -> None:
     """Test scanning nonexistent directory."""
     result = await scan_tools_directory(Path("/nonexistent/path"))
     assert result == {}

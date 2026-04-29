@@ -47,3 +47,49 @@ All file system IO operations SHALL use `anyio.Path` async methods instead of `p
 #### Scenario: Path concatenation
 - **WHEN** code needs to construct a path from parts
 - **THEN** `pathlib.Path` MAY be used for the concatenation operation
+
+### Requirement: Import order follows stdlib → third-party → local pattern
+All Python files SHALL organize imports in three groups separated by blank lines:
+1. Standard library imports (alphabetically sorted)
+2. Third-party imports (alphabetically sorted)
+3. Local imports (alphabetically sorted)
+
+This requirement aligns with ruff isort (I rule) configuration.
+
+#### Scenario: Correct import order
+- **WHEN** a Python file contains imports from stdlib, third-party, and local modules
+- **THEN** imports SHALL be ordered as stdlib first, third-party second, local third, with each group alphabetically sorted
+
+#### Scenario: Import order violation detected
+- **WHEN** ruff check is run on a file with incorrect import order
+- **THEN** ruff SHALL report an I rule violation
+
+### Requirement: Async context managers set resources to None on exit
+All async context manager `__aexit__` implementations SHALL set resource references to `None` after closing them, ensuring proper cleanup state and enabling debug logging.
+
+#### Scenario: Resource cleanup in async context manager
+- **WHEN** an async context manager exits
+- **THEN** all resource attributes SHALL be set to `None` after their `close()` methods are called
+- **AND** a debug log message SHALL record the cleanup
+
+### Requirement: Type annotations use modern Python 3.14+ syntax
+All Python files SHALL use modern type annotation syntax:
+- `X | Y` instead of `Union[X, Y]`
+- `list[X]` instead of `List[X]`
+- `dict[K, V]` instead of `Dict[K, V]`
+- `X | None` instead of `Optional[X]`
+
+#### Scenario: Modern union syntax
+- **WHEN** a function returns either a string or None
+- **THEN** the return type annotation SHALL use `str | None`
+
+### Requirement: Docstrings follow Google style format
+All functions and classes SHALL use Google-style docstrings with:
+- One-line summary
+- Args section with parameter descriptions
+- Returns section for functions that return values
+- Raises section for functions that can raise exceptions
+
+#### Scenario: Complete function documentation
+- **WHEN** a function has parameters, a return value, and can raise exceptions
+- **THEN** its docstring SHALL include Args, Returns, and Raises sections
