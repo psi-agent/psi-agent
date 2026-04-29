@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import sys
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import Any
 
@@ -252,6 +253,9 @@ class SessionRunner:
 
         Returns:
             Response dict in OpenAI format.
+
+        Raises:
+            aiohttp.ClientError: If communication with AI component fails.
         """
         assert self.history is not None
         assert self.client is not None
@@ -389,7 +393,9 @@ class SessionRunner:
             ]
         }
 
-    async def process_streaming_request(self, user_message: dict[str, Any]) -> Any:
+    async def process_streaming_request(
+        self, user_message: dict[str, Any]
+    ) -> AsyncGenerator[str] | dict[str, Any]:
         """Process a user request with streaming response.
 
         Args:
@@ -539,7 +545,7 @@ class SessionRunner:
 
         return list(tool_calls_map.values())
 
-    async def _make_streaming_response(self, content_chunks: list[str]):
+    async def _make_streaming_response(self, content_chunks: list[str]) -> AsyncGenerator[str]:
         """Create SSE streaming response.
 
         Args:

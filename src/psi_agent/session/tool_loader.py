@@ -163,6 +163,9 @@ async def load_tool_from_file(file_path: Path) -> ToolSchema | None:
 
     Returns:
         ToolSchema if successful, None if failed.
+
+    Raises:
+        OSError: If file cannot be read for hash computation.
     """
     tool_name = file_path.stem
     file_hash = await compute_file_hash(file_path)
