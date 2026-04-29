@@ -12,8 +12,6 @@ from loguru import logger
 class ManifestParseError(Exception):
     """Raised when manifest JSON parsing fails."""
 
-    pass
-
 
 @dataclass
 class Layer:

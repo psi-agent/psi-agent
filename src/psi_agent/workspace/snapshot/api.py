@@ -16,8 +16,6 @@ from psi_agent.workspace.manifest import Layer, Manifest, parse_manifest, serial
 class SnapshotError(Exception):
     """Raised when snapshot operation fails."""
 
-    pass
-
 
 async def snapshot(
     input_file: str | anyio.Path,

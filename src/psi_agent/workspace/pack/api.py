@@ -15,8 +15,6 @@ from psi_agent.workspace.manifest import Layer, Manifest, serialize_manifest
 class PackError(Exception):
     """Raised when pack operation fails."""
 
-    pass
-
 
 async def pack(
     input_dir: str | anyio.Path,
