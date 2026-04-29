@@ -24,6 +24,7 @@ ENV/
 .pytest_cache/
 .coverage
 coverage.xml
+junit.xml
 
 # Project
 
