@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from pathlib import Path as SyncPath
-
 import anyio
+import platformdirs
 
 from psi_agent.channel.repl.config import ReplConfig
 
@@ -29,7 +28,7 @@ class TestReplConfig:
         """Test get_history_path returns default path when not configured."""
         config = ReplConfig(session_socket="/tmp/test.sock")
 
-        expected = anyio.Path(SyncPath.home() / ".cache" / "psi-agent" / "repl_history.txt")
+        expected = anyio.Path(platformdirs.user_cache_dir("psi-agent")) / "repl_history.txt"
         assert config.get_history_path() == expected
 
     def test_get_history_path_custom(self) -> None:

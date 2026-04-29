@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
-from pathlib import Path as SyncPath
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -84,7 +84,7 @@ class TestAnthropicMessagesServer:
         """Test that start creates socket file."""
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            socket_path = SyncPath(tmpdir) / "test.sock"
+            socket_path = os.path.join(tmpdir, "test.sock")
             config = AnthropicMessagesConfig(
                 session_socket=str(socket_path),
                 model="claude-sonnet-4-20250514",

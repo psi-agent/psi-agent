@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path as SyncPath
 from uuid import uuid4
 
 import anyio
@@ -59,14 +58,14 @@ class TestResolveTargetLayer:
 class TestMount:
     """Tests for mount function."""
 
-    async def test_mount_nonexistent_input(self, tmp_path: SyncPath) -> None:
+    async def test_mount_nonexistent_input(self, tmp_path) -> None:
         """Mount raises error for nonexistent input file."""
         output_dir = anyio.Path(tmp_path) / "mounted"
 
         with pytest.raises(MountError, match="does not exist"):
             await mount(anyio.Path(tmp_path) / "nonexistent.squashfs", output_dir)
 
-    async def test_mount_directory_as_input(self, tmp_path: SyncPath) -> None:
+    async def test_mount_directory_as_input(self, tmp_path) -> None:
         """Mount raises error when input is a directory."""
         input_dir = anyio.Path(tmp_path) / "input"
         await input_dir.mkdir()

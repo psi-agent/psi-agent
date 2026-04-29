@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path as SyncPath
-
 import anyio
 import pytest
 
@@ -21,7 +19,7 @@ class TestComputeFileHash:
     """Tests for compute_file_hash function."""
 
     @pytest.mark.asyncio
-    async def test_compute_hash_returns_string(self, tmp_path: SyncPath) -> None:
+    async def test_compute_hash_returns_string(self, tmp_path) -> None:
         """Test that compute_file_hash returns a string."""
         test_file = anyio.Path(tmp_path) / "test.py"
         await test_file.write_text("print('hello')")
@@ -32,7 +30,7 @@ class TestComputeFileHash:
         assert len(result) == 32  # MD5 hash is 32 hex characters
 
     @pytest.mark.asyncio
-    async def test_same_content_same_hash(self, tmp_path: SyncPath) -> None:
+    async def test_same_content_same_hash(self, tmp_path) -> None:
         """Test that same content produces same hash."""
         test_file1 = anyio.Path(tmp_path) / "test1.py"
         test_file2 = anyio.Path(tmp_path) / "test2.py"
@@ -46,7 +44,7 @@ class TestComputeFileHash:
         assert hash1 == hash2
 
     @pytest.mark.asyncio
-    async def test_different_content_different_hash(self, tmp_path: SyncPath) -> None:
+    async def test_different_content_different_hash(self, tmp_path) -> None:
         """Test that different content produces different hash."""
         test_file1 = anyio.Path(tmp_path) / "test1.py"
         test_file2 = anyio.Path(tmp_path) / "test2.py"
@@ -63,7 +61,7 @@ class TestScanToolsDirectory:
     """Tests for scan_tools_directory function."""
 
     @pytest.mark.asyncio
-    async def test_scan_empty_directory(self, tmp_path: SyncPath) -> None:
+    async def test_scan_empty_directory(self, tmp_path) -> None:
         """Test scanning empty directory."""
         tools_dir = anyio.Path(tmp_path) / "tools"
         await tools_dir.mkdir()
@@ -73,14 +71,14 @@ class TestScanToolsDirectory:
         assert result == {}
 
     @pytest.mark.asyncio
-    async def test_scan_nonexistent_directory(self, tmp_path: SyncPath) -> None:
+    async def test_scan_nonexistent_directory(self, tmp_path) -> None:
         """Test scanning nonexistent directory."""
         result = await scan_tools_directory(anyio.Path(tmp_path) / "nonexistent")
 
         assert result == {}
 
     @pytest.mark.asyncio
-    async def test_scan_finds_python_files(self, tmp_path: SyncPath) -> None:
+    async def test_scan_finds_python_files(self, tmp_path) -> None:
         """Test that scan finds .py files."""
         tools_dir = anyio.Path(tmp_path) / "tools"
         await tools_dir.mkdir()
@@ -94,7 +92,7 @@ class TestScanToolsDirectory:
         assert "write" in result
 
     @pytest.mark.asyncio
-    async def test_scan_ignores_non_python_files(self, tmp_path: SyncPath) -> None:
+    async def test_scan_ignores_non_python_files(self, tmp_path) -> None:
         """Test that scan ignores non-.py files."""
         tools_dir = anyio.Path(tmp_path) / "tools"
         await tools_dir.mkdir()
@@ -111,7 +109,7 @@ class TestScanSkillsDirectory:
     """Tests for scan_skills_directory function."""
 
     @pytest.mark.asyncio
-    async def test_scan_empty_directory(self, tmp_path: SyncPath) -> None:
+    async def test_scan_empty_directory(self, tmp_path) -> None:
         """Test scanning empty directory."""
         skills_dir = anyio.Path(tmp_path) / "skills"
         await skills_dir.mkdir()
@@ -121,7 +119,7 @@ class TestScanSkillsDirectory:
         assert result == {}
 
     @pytest.mark.asyncio
-    async def test_scan_finds_skill_md_files(self, tmp_path: SyncPath) -> None:
+    async def test_scan_finds_skill_md_files(self, tmp_path) -> None:
         """Test that scan finds SKILL.md files."""
         skills_dir = anyio.Path(tmp_path) / "skills"
         await skills_dir.mkdir()
@@ -139,7 +137,7 @@ class TestScanSkillsDirectory:
         assert "skill2" in result
 
     @pytest.mark.asyncio
-    async def test_scan_ignores_dirs_without_skill_md(self, tmp_path: SyncPath) -> None:
+    async def test_scan_ignores_dirs_without_skill_md(self, tmp_path) -> None:
         """Test that scan ignores directories without SKILL.md."""
         skills_dir = anyio.Path(tmp_path) / "skills"
         await skills_dir.mkdir()
@@ -156,7 +154,7 @@ class TestScanSchedulesDirectory:
     """Tests for scan_schedules_directory function."""
 
     @pytest.mark.asyncio
-    async def test_scan_empty_directory(self, tmp_path: SyncPath) -> None:
+    async def test_scan_empty_directory(self, tmp_path) -> None:
         """Test scanning empty directory."""
         schedules_dir = anyio.Path(tmp_path) / "schedules"
         await schedules_dir.mkdir()
@@ -166,7 +164,7 @@ class TestScanSchedulesDirectory:
         assert result == {}
 
     @pytest.mark.asyncio
-    async def test_scan_finds_task_md_files(self, tmp_path: SyncPath) -> None:
+    async def test_scan_finds_task_md_files(self, tmp_path) -> None:
         """Test that scan finds TASK.md files."""
         schedules_dir = anyio.Path(tmp_path) / "schedules"
         await schedules_dir.mkdir()
@@ -238,7 +236,7 @@ class TestWorkspaceWatcher:
     """Tests for WorkspaceWatcher class."""
 
     @pytest.mark.asyncio
-    async def test_initialize_scans_all_directories(self, tmp_path: SyncPath) -> None:
+    async def test_initialize_scans_all_directories(self, tmp_path) -> None:
         """Test that initialize scans all workspace directories."""
         workspace = anyio.Path(tmp_path)
         # Create workspace structure
@@ -266,7 +264,7 @@ class TestWorkspaceWatcher:
         assert len(watcher.get_schedule_hashes()) == 1
 
     @pytest.mark.asyncio
-    async def test_check_for_changes_detects_new_tool(self, tmp_path: SyncPath) -> None:
+    async def test_check_for_changes_detects_new_tool(self, tmp_path) -> None:
         """Test that check_for_changes detects new tool."""
         workspace = anyio.Path(tmp_path)
         tools_dir = workspace / "tools"
@@ -285,7 +283,7 @@ class TestWorkspaceWatcher:
         assert changes.tools_changed
 
     @pytest.mark.asyncio
-    async def test_check_for_changes_detects_modified_skill(self, tmp_path: SyncPath) -> None:
+    async def test_check_for_changes_detects_modified_skill(self, tmp_path) -> None:
         """Test that check_for_changes detects modified skill."""
         workspace = anyio.Path(tmp_path)
         skills_dir = workspace / "skills"
@@ -307,7 +305,7 @@ class TestWorkspaceWatcher:
         assert changes.skills_changed
 
     @pytest.mark.asyncio
-    async def test_check_for_changes_detects_removed_schedule(self, tmp_path: SyncPath) -> None:
+    async def test_check_for_changes_detects_removed_schedule(self, tmp_path) -> None:
         """Test that check_for_changes detects removed schedule."""
         workspace = anyio.Path(tmp_path)
         schedules_dir = workspace / "schedules"
@@ -329,7 +327,7 @@ class TestWorkspaceWatcher:
         assert changes.schedules_changed
 
     @pytest.mark.asyncio
-    async def test_check_for_changes_no_changes(self, tmp_path: SyncPath) -> None:
+    async def test_check_for_changes_no_changes(self, tmp_path) -> None:
         """Test that check_for_changes returns empty when no changes."""
         workspace = anyio.Path(tmp_path)
         tools_dir = workspace / "tools"

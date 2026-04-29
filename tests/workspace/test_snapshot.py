@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path as SyncPath
 from unittest.mock import patch
 
 import anyio
@@ -14,7 +13,7 @@ from psi_agent.workspace.snapshot.api import SnapshotError, snapshot
 class TestSnapshot:
     """Tests for snapshot function."""
 
-    async def test_snapshot_nonexistent_input(self, tmp_path: SyncPath) -> None:
+    async def test_snapshot_nonexistent_input(self, tmp_path) -> None:
         """Snapshot raises error for nonexistent input file."""
         mount_point = anyio.Path(tmp_path) / "mounted"
         await mount_point.mkdir()
@@ -22,7 +21,7 @@ class TestSnapshot:
         with pytest.raises(SnapshotError, match="Input file does not exist"):
             await snapshot(anyio.Path(tmp_path) / "nonexistent.squashfs", mount_point)
 
-    async def test_snapshot_nonexistent_mount_point(self, tmp_path: SyncPath) -> None:
+    async def test_snapshot_nonexistent_mount_point(self, tmp_path) -> None:
         """Snapshot raises error for nonexistent mount point."""
         input_file = anyio.Path(tmp_path) / "workspace.squashfs"
         await input_file.touch()
@@ -30,7 +29,7 @@ class TestSnapshot:
         with pytest.raises(SnapshotError, match="Mount point does not exist"):
             await snapshot(input_file, anyio.Path(tmp_path) / "nonexistent")
 
-    async def test_snapshot_missing_mount_info(self, tmp_path: SyncPath) -> None:
+    async def test_snapshot_missing_mount_info(self, tmp_path) -> None:
         """Snapshot raises error when mount info is missing."""
         input_file = anyio.Path(tmp_path) / "workspace.squashfs"
         await input_file.touch()
@@ -41,7 +40,7 @@ class TestSnapshot:
         with pytest.raises(SnapshotError, match="Mount info file not found"):
             await snapshot(input_file, mount_point)
 
-    async def test_snapshot_invalid_mount_info(self, tmp_path: SyncPath) -> None:
+    async def test_snapshot_invalid_mount_info(self, tmp_path) -> None:
         """Snapshot raises error when mount info is invalid."""
         input_file = anyio.Path(tmp_path) / "workspace.squashfs"
         await input_file.touch()
@@ -56,7 +55,7 @@ class TestSnapshot:
         with pytest.raises(SnapshotError, match="Invalid mount info"):
             await snapshot(input_file, mount_point)
 
-    async def test_snapshot_with_valid_mount_info(self, tmp_path: SyncPath) -> None:
+    async def test_snapshot_with_valid_mount_info(self, tmp_path) -> None:
         """Snapshot processes valid mount info correctly."""
         input_file = anyio.Path(tmp_path) / "workspace.squashfs"
         await input_file.touch()

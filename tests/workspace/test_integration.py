@@ -7,7 +7,6 @@ Run with: sudo uv run pytest tests/workspace/test_integration.py -v
 from __future__ import annotations
 
 import os
-from pathlib import Path as SyncPath
 
 import anyio
 import pytest
@@ -20,7 +19,7 @@ from psi_agent.workspace.unpack.api import unpack
 class TestIntegration:
     """Integration tests for workspace components."""
 
-    async def test_pack_unpack_roundtrip(self, tmp_path: SyncPath) -> None:
+    async def test_pack_unpack_roundtrip(self, tmp_path) -> None:
         """Pack and unpack should preserve workspace contents."""
         # Create input workspace
         input_dir = anyio.Path(tmp_path) / "workspace"
@@ -57,7 +56,7 @@ class TestIntegration:
 class TestNonPrivileged:
     """Tests that don't require root privileges."""
 
-    async def test_pack_creates_valid_squashfs(self, tmp_path: SyncPath) -> None:
+    async def test_pack_creates_valid_squashfs(self, tmp_path) -> None:
         """Pack creates a valid squashfs file."""
         input_dir = anyio.Path(tmp_path) / "workspace"
         await input_dir.mkdir()

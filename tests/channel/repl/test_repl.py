@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path as SyncPath
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import anyio
@@ -124,7 +123,7 @@ class TestReplHistory:
     """Tests for REPL history navigation."""
 
     @pytest.fixture
-    def config(self, tmp_path: SyncPath) -> ReplConfig:
+    def config(self, tmp_path) -> ReplConfig:
         """Create test config with custom history file."""
         history_file = anyio.Path(tmp_path) / "history.txt"
         return ReplConfig(session_socket="/tmp/test.sock", history_file=str(history_file))
@@ -155,7 +154,7 @@ class TestReplHistory:
             assert isinstance(repl._session.history, FileHistory)
 
     @pytest.mark.asyncio
-    async def test_history_persists_to_file(self, tmp_path: SyncPath) -> None:
+    async def test_history_persists_to_file(self, tmp_path) -> None:
         """Test that FileHistory is created with correct path."""
         history_file = anyio.Path(tmp_path) / "history.txt"
         config = ReplConfig(session_socket="/tmp/test.sock", history_file=str(history_file))
@@ -181,7 +180,7 @@ class TestReplHistory:
             assert repl._session.history.filename == str(history_file)
 
     @pytest.mark.asyncio
-    async def test_history_loaded_from_file(self, tmp_path: SyncPath) -> None:
+    async def test_history_loaded_from_file(self, tmp_path) -> None:
         """Test that FileHistory can load from existing file."""
         history_file = anyio.Path(tmp_path) / "history.txt"
         # Pre-populate history file in FileHistory format
@@ -236,7 +235,7 @@ class TestReplEditing:
     """Tests for REPL line editing capabilities."""
 
     @pytest.fixture
-    def config(self, tmp_path: SyncPath) -> ReplConfig:
+    def config(self, tmp_path) -> ReplConfig:
         """Create test config with custom history file."""
         history_file = anyio.Path(tmp_path) / "history.txt"
         return ReplConfig(session_socket="/tmp/test.sock", history_file=str(history_file))
@@ -281,7 +280,7 @@ class TestEnsureHistoryDir:
     """Tests for _ensure_history_dir helper function."""
 
     @pytest.mark.asyncio
-    async def test_creates_directory_if_missing(self, tmp_path: SyncPath) -> None:
+    async def test_creates_directory_if_missing(self, tmp_path) -> None:
         """Test that directory is created when it doesn't exist."""
         history_path = anyio.Path(tmp_path) / "subdir" / "history.txt"
         assert not await history_path.parent.exists()
@@ -291,7 +290,7 @@ class TestEnsureHistoryDir:
         assert await history_path.parent.exists()
 
     @pytest.mark.asyncio
-    async def test_does_not_fail_if_directory_exists(self, tmp_path: SyncPath) -> None:
+    async def test_does_not_fail_if_directory_exists(self, tmp_path) -> None:
         """Test that function succeeds when directory already exists."""
         history_path = anyio.Path(tmp_path) / "history.txt"
         await history_path.parent.mkdir(parents=True, exist_ok=True)
@@ -302,7 +301,7 @@ class TestEnsureHistoryDir:
         assert await history_path.parent.exists()
 
     @pytest.mark.asyncio
-    async def test_creates_nested_directories(self, tmp_path: SyncPath) -> None:
+    async def test_creates_nested_directories(self, tmp_path) -> None:
         """Test that nested directories are created."""
         history_path = anyio.Path(tmp_path) / "a" / "b" / "c" / "history.txt"
 
