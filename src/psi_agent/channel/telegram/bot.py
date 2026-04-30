@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from typing import Any
 
 from loguru import logger
@@ -173,6 +174,10 @@ class TelegramBot:
     ) -> None:
         """Handle message with streaming response using message editing.
 
+        Uses a time-window buffer mechanism: chunks are accumulated and flushed
+        after stream_interval seconds from the last chunk, ensuring no content
+        is stuck in the buffer even when no new chunks arrive.
+
         Args:
             update: The Telegram update.
             user_id: The user identifier.
@@ -180,15 +185,12 @@ class TelegramBot:
         """
         # Buffer for accumulating content
         content_buffer: list[str] = []
-        last_edit_time: float = 0.0
         sent_message: Any = None
-        edit_task: asyncio.Task[None] | None = None
+        flush_task: asyncio.Task[None] | None = None
 
-        async def edit_message() -> None:
-            """Edit the sent message with current buffer content."""
-            nonlocal last_edit_time
-
-            if sent_message is None:
+        async def flush_buffer() -> None:
+            """Flush the buffer content to the sent message."""
+            if sent_message is None or not content_buffer:
                 return
 
             current_content = "".join(content_buffer)
@@ -197,25 +199,31 @@ class TelegramBot:
 
             try:
                 await sent_message.edit_text(display_content)
-                last_edit_time = asyncio.get_running_loop().time()
             except Exception as e:
                 logger.error(f"Failed to edit message: {e}")
 
+        async def schedule_flush() -> None:
+            """Wait for stream_interval then flush the buffer."""
+            await asyncio.sleep(self.config.stream_interval)
+            await flush_buffer()
+
         def on_chunk(chunk: str) -> None:
-            """Callback for each streaming chunk."""
-            nonlocal edit_task
+            """Callback for each streaming chunk.
+
+            Accumulates the chunk and schedules a flush task. If a flush task
+            is already pending, cancel it and start a new one to ensure flush
+            happens stream_interval seconds after the last chunk.
+            """
+            nonlocal flush_task
 
             content_buffer.append(chunk)
 
-            # Check if we should schedule an edit
-            current_time = asyncio.get_running_loop().time()
-            time_since_last_edit = current_time - last_edit_time
+            # Cancel existing flush task if any
+            if flush_task is not None and not flush_task.done():
+                flush_task.cancel()
 
-            if time_since_last_edit >= self.config.stream_interval and (
-                edit_task is None or edit_task.done()
-            ):
-                # Schedule edit task
-                edit_task = asyncio.create_task(edit_message())
+            # Schedule new flush task
+            flush_task = asyncio.create_task(schedule_flush())
 
         # Send initial message placeholder
         if update.message is None:
@@ -230,12 +238,13 @@ class TelegramBot:
         # Get streaming response
         response = await self.client.send_message_stream(message_text, user_id, on_chunk)
 
-        # Final edit with complete content
-        final_content = "".join(content_buffer) if content_buffer else response
+        # Wait for any pending flush task to complete
+        if flush_task is not None and not flush_task.done():
+            with contextlib.suppress(asyncio.CancelledError):
+                await flush_task
 
-        # Wait for any pending edit task
-        if edit_task is not None and not edit_task.done():
-            await edit_task
+        # Final flush with complete content
+        final_content = "".join(content_buffer) if content_buffer else response
 
         # Handle message splitting if content exceeds limit
         if len(final_content) > TELEGRAM_MAX_MESSAGE_LENGTH:
