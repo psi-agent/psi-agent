@@ -63,3 +63,33 @@ def test_telegram_config_with_proxy_auth():
     )
 
     assert config.proxy == "socks5://user:password@proxy.example.com:1080"
+
+
+def test_telegram_config_stream_default_true():
+    """Test TelegramConfig stream defaults to True."""
+    config = TelegramConfig(token="test-token", session_socket="/tmp/test.sock")
+
+    assert config.stream is True
+
+
+def test_telegram_config_stream_interval_default():
+    """Test TelegramConfig stream_interval defaults to 1.0."""
+    config = TelegramConfig(token="test-token", session_socket="/tmp/test.sock")
+
+    assert config.stream_interval == 1.0
+
+
+def test_telegram_config_with_stream_disabled():
+    """Test TelegramConfig can be created with stream disabled."""
+    config = TelegramConfig(token="test-token", session_socket="/tmp/test.sock", stream=False)
+
+    assert config.stream is False
+
+
+def test_telegram_config_with_custom_stream_interval():
+    """Test TelegramConfig can be created with custom stream_interval."""
+    config = TelegramConfig(
+        token="test-token", session_socket="/tmp/test.sock", stream_interval=0.5
+    )
+
+    assert config.stream_interval == 0.5
