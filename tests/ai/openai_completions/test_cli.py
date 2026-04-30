@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from psi_agent.ai.openai_completions.cli import OpenaiCompletions
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from psi_agent.ai.openai_completions.cli import OpenaiCompletions, main
 from psi_agent.ai.openai_completions.config import OpenAICompletionsConfig
 
 
@@ -64,6 +67,95 @@ class TestOpenaiCompletionsCli:
 
     def test_main_exists(self) -> None:
         """Test main function exists."""
-        from psi_agent.ai.openai_completions.cli import main
-
         assert callable(main)
+
+    @patch("psi_agent.ai.openai_completions.cli.tyro.cli")
+    def test_main_calls_tyro(self, mock_cli: MagicMock) -> None:
+        """Test main function calls tyro.cli."""
+        main()
+        mock_cli.assert_called_once_with(OpenaiCompletions)
+
+    @patch("psi_agent.ai.openai_completions.cli.mask_sensitive_args")
+    @patch("psi_agent.ai.openai_completions.cli.OpenAICompletionsServer")
+    @patch("psi_agent.ai.openai_completions.cli.asyncio.run")
+    def test_cli_call_masks_sensitive_args(
+        self, mock_run: MagicMock, mock_server: MagicMock, mock_mask: MagicMock
+    ) -> None:
+        """Test CLI __call__ masks sensitive arguments."""
+        cli = OpenaiCompletions(
+            session_socket="/tmp/test.sock",
+            model="gpt-4",
+            api_key="secret-key",
+        )
+        cli()
+
+        mock_mask.assert_called_once_with(["api_key"])
+
+    @patch("psi_agent.ai.openai_completions.cli.OpenAICompletionsServer")
+    @patch("psi_agent.ai.openai_completions.cli.asyncio.run")
+    def test_cli_call_creates_server(
+        self, mock_run: MagicMock, mock_server_class: MagicMock
+    ) -> None:
+        """Test CLI __call__ creates server with correct config."""
+        cli = OpenaiCompletions(
+            session_socket="/tmp/test.sock",
+            model="gpt-4",
+            api_key="test-key",
+            base_url="https://custom.api.com/v1",
+        )
+        cli()
+
+        mock_server_class.assert_called_once()
+        call_args = mock_server_class.call_args
+        config = call_args[0][0]
+        assert isinstance(config, OpenAICompletionsConfig)
+        assert config.session_socket == "/tmp/test.sock"
+        assert config.model == "gpt-4"
+        assert config.api_key == "test-key"
+        assert config.base_url == "https://custom.api.com/v1"
+
+    @patch("psi_agent.ai.openai_completions.cli.OpenAICompletionsServer")
+    @patch("psi_agent.ai.openai_completions.cli.asyncio.run")
+    def test_cli_call_starts_server(
+        self, mock_run: MagicMock, mock_server_class: MagicMock
+    ) -> None:
+        """Test CLI __call__ starts server."""
+        mock_server = AsyncMock()
+        mock_server_class.return_value = mock_server
+
+        cli = OpenaiCompletions(
+            session_socket="/tmp/test.sock",
+            model="gpt-4",
+            api_key="test-key",
+        )
+        cli()
+
+        # Verify asyncio.run was called
+        mock_run.assert_called_once()
+
+    def test_cli_call_runs_async_loop(self) -> None:
+        """Test CLI __call__ runs the async event loop."""
+        call_count = [0]
+
+        def mock_run(coro):
+            call_count[0] += 1
+            # Don't actually run the coroutine
+
+        with (
+            patch.object(asyncio, "run", side_effect=mock_run),
+            patch("psi_agent.ai.openai_completions.cli.mask_sensitive_args"),
+            patch(
+                "psi_agent.ai.openai_completions.cli.OpenAICompletionsServer"
+            ) as mock_server_class,
+        ):
+            mock_server = AsyncMock()
+            mock_server_class.return_value = mock_server
+
+            cli = OpenaiCompletions(
+                session_socket="/tmp/test.sock",
+                model="gpt-4",
+                api_key="test-key",
+            )
+            cli()
+
+        assert call_count[0] == 1

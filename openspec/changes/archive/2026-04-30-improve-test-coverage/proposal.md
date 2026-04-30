@@ -1,33 +1,31 @@
 ## Why
 
-当前测试覆盖率为 79%，存在多个关键模块覆盖率低于 70%，包括 CLI 入口点（0-52%）、workspace 操作 API（33-63%）和 schedule 执行器（54%）。低覆盖率增加了回归风险，不利于代码重构和维护。
+当前测试覆盖率为 47%，低于项目质量标准。多个核心模块覆盖率不足 80%，包括 CLI 入口点、AI 组件服务器、session 服务器等。提高测试覆盖率可以确保代码质量，减少回归风险。
 
 ## What Changes
 
-- 为 `__main__.py` 添加入口点测试（当前 0%）
-- 为 `workspace/snapshot/api.py` 添加完整测试（当前 33%）
-- 为 `workspace/mount/api.py` 添加完整测试（当前 41%）
-- 为 `channel/cli/cli.py` 添加测试（当前 40%）
-- 为 `session/schedule.py` 添加测试（当前 54%）
-- 为各组件 CLI 模块添加测试（当前 52-69%）
-- 提升整体覆盖率目标至 90%+
+- 为覆盖率低于 80% 的模块添加测试
+- 重点覆盖以下模块：
+  - `channel/cli/cli.py` (39%)
+  - `ai/openai_completions/cli.py` (52%)
+  - `session/cli.py` (52%)
+  - `ai/anthropic_messages/cli.py` (53%)
+  - `workspace/umount/api.py` (63%)
+  - `ai/anthropic_messages/server.py` (65%)
+  - `ai/anthropic_messages/client.py` (67%)
 
 ## Capabilities
 
 ### New Capabilities
 
-- `cli-entrypoint-testing`: 测试 psi-agent 主入口点和子命令路由
-- `workspace-snapshot-testing`: 测试 workspace snapshot API 的完整功能
-- `workspace-mount-testing`: 测试 workspace mount API 的完整功能
-- `channel-cli-testing`: 测试 channel CLI 命令处理
-- `schedule-execution-testing`: 测试定时任务执行器的完整逻辑
+- `test-coverage-improvement`: 为低覆盖率模块添加单元测试
 
 ### Modified Capabilities
 
-无现有 spec 需要修改，此变更仅增加测试代码。
+None - 此变更仅添加测试，不修改现有功能需求。
 
 ## Impact
 
-- 新增测试文件于 `tests/` 目录
-- 不影响现有生产代码
-- 提升 CI 质量保障能力
+- 新增测试文件到 `tests/` 目录
+- 无代码功能变更
+- 提高整体测试覆盖率

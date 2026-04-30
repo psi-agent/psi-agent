@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
 from psi_agent.ai.anthropic_messages.cli import AnthropicMessages, main
 from psi_agent.ai.anthropic_messages.config import AnthropicMessagesConfig
 
@@ -67,6 +70,12 @@ class TestAnthropicMessagesMain:
 
         assert inspect.isfunction(main)
 
+    @patch("psi_agent.ai.anthropic_messages.cli.tyro.cli")
+    def test_main_calls_tyro(self, mock_cli: MagicMock) -> None:
+        """Test main function calls tyro.cli."""
+        main()
+        mock_cli.assert_called_once_with(AnthropicMessages)
+
 
 class TestAnthropicMessagesDefaults:
     """Tests for default values."""
@@ -119,3 +128,74 @@ class TestAnthropicMessagesModelVariants:
             api_key="test-key",
         )
         assert cli.model == "claude-3-haiku-20240307"
+
+
+class TestAnthropicMessagesCall:
+    """Tests for CLI __call__ method."""
+
+    @patch("psi_agent.ai.anthropic_messages.cli.mask_sensitive_args")
+    @patch("psi_agent.ai.anthropic_messages.cli.AnthropicMessagesServer")
+    @patch("psi_agent.ai.anthropic_messages.cli.asyncio.run")
+    def test_cli_call_masks_sensitive_args(
+        self, mock_run: MagicMock, mock_server: MagicMock, mock_mask: MagicMock
+    ) -> None:
+        """Test CLI __call__ masks sensitive arguments."""
+        cli = AnthropicMessages(
+            session_socket="/tmp/test.sock",
+            model="claude-3-opus",
+            api_key="secret-key",
+        )
+        cli()
+
+        mock_mask.assert_called_once_with(["api_key"])
+
+    @patch("psi_agent.ai.anthropic_messages.cli.AnthropicMessagesServer")
+    @patch("psi_agent.ai.anthropic_messages.cli.asyncio.run")
+    def test_cli_call_creates_server(
+        self, mock_run: MagicMock, mock_server_class: MagicMock
+    ) -> None:
+        """Test CLI __call__ creates server with correct config."""
+        cli = AnthropicMessages(
+            session_socket="/tmp/test.sock",
+            model="claude-3-opus",
+            api_key="test-key",
+            base_url="https://custom.api.com",
+            max_tokens=8192,
+        )
+        cli()
+
+        mock_server_class.assert_called_once()
+        call_args = mock_server_class.call_args
+        config = call_args[0][0]
+        assert isinstance(config, AnthropicMessagesConfig)
+        assert config.session_socket == "/tmp/test.sock"
+        assert config.model == "claude-3-opus"
+        assert config.api_key == "test-key"
+        assert config.base_url == "https://custom.api.com"
+        assert config.max_tokens == 8192
+
+    def test_cli_call_runs_async_loop(self) -> None:
+        """Test CLI __call__ runs the async event loop."""
+        call_count = [0]
+
+        def mock_run(coro):
+            call_count[0] += 1
+
+        with (
+            patch.object(asyncio, "run", side_effect=mock_run),
+            patch("psi_agent.ai.anthropic_messages.cli.mask_sensitive_args"),
+            patch(
+                "psi_agent.ai.anthropic_messages.cli.AnthropicMessagesServer"
+            ) as mock_server_class,
+        ):
+            mock_server = AsyncMock()
+            mock_server_class.return_value = mock_server
+
+            cli = AnthropicMessages(
+                session_socket="/tmp/test.sock",
+                model="claude-3-opus",
+                api_key="test-key",
+            )
+            cli()
+
+        assert call_count[0] == 1

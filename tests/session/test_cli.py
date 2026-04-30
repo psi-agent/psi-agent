@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
+
 from psi_agent.session.cli import Session, main
 from psi_agent.session.config import SessionConfig
 
@@ -50,6 +53,25 @@ class TestSessionCli:
         assert config.channel_socket == "/tmp/channel.sock"
         assert config.ai_socket == "/tmp/ai.sock"
 
+    def test_session_with_reasoning_effort(self) -> None:
+        """Test Session with reasoning_effort option."""
+        session = Session(
+            channel_socket="/tmp/channel.sock",
+            ai_socket="/tmp/ai.sock",
+            workspace="/tmp/workspace",
+            reasoning_effort="high",
+        )
+        assert session.reasoning_effort == "high"
+
+    def test_session_default_reasoning_effort(self) -> None:
+        """Test default reasoning_effort is medium."""
+        session = Session(
+            channel_socket="/tmp/channel.sock",
+            ai_socket="/tmp/ai.sock",
+            workspace="/tmp/workspace",
+        )
+        assert session.reasoning_effort == "medium"
+
 
 class TestSessionMain:
     """Tests for main function."""
@@ -63,6 +85,12 @@ class TestSessionMain:
         import inspect
 
         assert inspect.isfunction(main)
+
+    @patch("psi_agent.session.cli.tyro.cli")
+    def test_main_calls_tyro(self, mock_cli: MagicMock) -> None:
+        """Test main function calls tyro.cli."""
+        main()
+        mock_cli.assert_called_once_with(Session)
 
 
 class TestSessionDefaults:
@@ -102,3 +130,86 @@ class TestSessionPaths:
         assert session.channel_socket == "/var/run/psi/channel.sock"
         assert session.ai_socket == "/var/run/psi/ai.sock"
         assert session.workspace == "/home/user/workspace"
+
+
+class TestSessionCall:
+    """Tests for Session __call__ method."""
+
+    @patch("psi_agent.session.cli.SessionServer")
+    @patch("psi_agent.session.cli.asyncio.run")
+    def test_cli_call_creates_server(
+        self, mock_run: MagicMock, mock_server_class: MagicMock
+    ) -> None:
+        """Test CLI __call__ creates server with correct config."""
+        cli = Session(
+            channel_socket="/tmp/channel.sock",
+            ai_socket="/tmp/ai.sock",
+            workspace="/tmp/workspace",
+        )
+        cli()
+
+        mock_server_class.assert_called_once()
+        call_args = mock_server_class.call_args
+        config = call_args[0][0]
+        assert isinstance(config, SessionConfig)
+        assert config.channel_socket == "/tmp/channel.sock"
+        assert config.ai_socket == "/tmp/ai.sock"
+
+    @patch("psi_agent.session.cli.SessionServer")
+    @patch("psi_agent.session.cli.asyncio.run")
+    def test_cli_call_with_history_file(
+        self, mock_run: MagicMock, mock_server_class: MagicMock
+    ) -> None:
+        """Test CLI __call__ with history file."""
+        cli = Session(
+            channel_socket="/tmp/channel.sock",
+            ai_socket="/tmp/ai.sock",
+            workspace="/tmp/workspace",
+            history_file="/tmp/history.json",
+        )
+        cli()
+
+        call_args = mock_server_class.call_args
+        config = call_args[0][0]
+        assert config.history_file == "/tmp/history.json"
+
+    @patch("psi_agent.session.cli.SessionServer")
+    @patch("psi_agent.session.cli.asyncio.run")
+    def test_cli_call_with_reasoning_effort(
+        self, mock_run: MagicMock, mock_server_class: MagicMock
+    ) -> None:
+        """Test CLI __call__ with reasoning effort."""
+        cli = Session(
+            channel_socket="/tmp/channel.sock",
+            ai_socket="/tmp/ai.sock",
+            workspace="/tmp/workspace",
+            reasoning_effort="high",
+        )
+        cli()
+
+        call_args = mock_server_class.call_args
+        config = call_args[0][0]
+        assert config.reasoning_effort == "high"
+
+    def test_cli_call_runs_async_loop(self) -> None:
+        """Test CLI __call__ runs the async event loop."""
+        call_count = [0]
+
+        def mock_run(coro):
+            call_count[0] += 1
+
+        with (
+            patch.object(asyncio, "run", side_effect=mock_run),
+            patch("psi_agent.session.cli.SessionServer") as mock_server_class,
+        ):
+            mock_server = AsyncMock()
+            mock_server_class.return_value = mock_server
+
+            cli = Session(
+                channel_socket="/tmp/channel.sock",
+                ai_socket="/tmp/ai.sock",
+                workspace="/tmp/workspace",
+            )
+            cli()
+
+        assert call_count[0] == 1

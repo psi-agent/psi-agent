@@ -1,48 +1,40 @@
 ## ADDED Requirements
 
-### Requirement: Translator functions are tested
-The Anthropic-to-OpenAI translator module SHALL have comprehensive test coverage for all translation functions.
+### Requirement: Minimum test coverage threshold
+All modules SHALL maintain a minimum test coverage of 80%.
 
-#### Scenario: Translate Anthropic message to OpenAI format
-- **WHEN** an Anthropic message with content blocks is translated
-- **THEN** the output SHALL be valid OpenAI message format
+#### Scenario: Coverage enforcement
+- **WHEN** test coverage is measured
+- **THEN** modules below 80% coverage SHALL be prioritized for additional testing
 
-#### Scenario: Translate OpenAI message to Anthropic format
-- **WHEN** an OpenAI message is translated to Anthropic format
-- **THEN** the output SHALL be valid Anthropic message format
+### Requirement: CLI module testing
+All CLI entry points SHALL have test coverage for parameter parsing and command invocation.
 
-#### Scenario: Handle empty content
-- **WHEN** a message with empty content is translated
-- **THEN** the translator SHALL handle it gracefully without error
+#### Scenario: Parse CLI arguments
+- **WHEN** valid CLI arguments are provided
+- **THEN** the CLI SHALL parse them correctly
 
-### Requirement: History compaction is tested
-The history compaction module SHALL have test coverage for all compaction scenarios.
+#### Scenario: Handle missing required argument
+- **WHEN** a required argument is missing
+- **THEN** the CLI SHALL show error message
 
-#### Scenario: Compact history within limit
-- **WHEN** history is within token limit
-- **THEN** history SHALL remain unchanged
+#### Scenario: Invoke CLI command
+- **WHEN** a CLI command is invoked with valid arguments
+- **THEN** the corresponding function SHALL be called with correct parameters
 
-#### Scenario: Compact history exceeding limit
-- **WHEN** history exceeds token limit
-- **THEN** older messages SHALL be summarized
+### Requirement: API module testing
+API modules SHALL have test coverage for core logic paths and error handling.
 
-### Requirement: Tool loader is tested
-The tool loader module SHALL have test coverage for loading, reloading, and error scenarios.
+#### Scenario: Execute API function successfully
+- **WHEN** an API function is called with valid inputs
+- **THEN** the function SHALL return expected results
 
-#### Scenario: Load valid tool
-- **WHEN** a valid tool Python file is loaded
-- **THEN** the tool SHALL be registered correctly
+#### Scenario: Handle API errors gracefully
+- **WHEN** an API function encounters an error
+- **THEN** the function SHALL return appropriate error response
 
-#### Scenario: Handle invalid tool
-- **WHEN** an invalid tool file is encountered
-- **THEN** the loader SHALL log error and skip the file
-
-#### Scenario: Reload changed tool
-- **WHEN** a tool file is modified
-- **THEN** the loader SHALL detect and reload the tool
-
-### Requirement: Server request handling is tested
-The OpenAI completions server SHALL have test coverage for request handling scenarios.
+### Requirement: Server module testing
+Server modules SHALL have test coverage for request handling and streaming scenarios.
 
 #### Scenario: Handle valid non-streaming request
 - **WHEN** a valid non-streaming request is received
@@ -55,14 +47,3 @@ The OpenAI completions server SHALL have test coverage for request handling scen
 #### Scenario: Handle streaming request
 - **WHEN** a streaming request is received
 - **THEN** the server SHALL return SSE stream
-
-### Requirement: CLI parameter parsing is tested
-All CLI modules SHALL have test coverage for parameter parsing.
-
-#### Scenario: Parse valid CLI arguments
-- **WHEN** valid arguments are provided
-- **THEN** the CLI SHALL parse them correctly
-
-#### Scenario: Handle missing required argument
-- **WHEN** a required argument is missing
-- **THEN** the CLI SHALL show error message
