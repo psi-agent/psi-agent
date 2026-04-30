@@ -631,3 +631,138 @@ async def tool(message: str) -> str:
             assert content.startswith("<thinking>")
             assert "[Tool: echo]" in content
             assert "Done" in content  # Final response is after thinking
+
+
+class TestStreamConversation:
+    """Tests for _stream_conversation method."""
+
+    @pytest.mark.asyncio
+    async def test_stream_conversation_yields_content(self, config):
+        """Test _stream_conversation yields content chunks."""
+        runner = SessionRunner(config)
+        async with runner:
+            sse_lines = [
+                b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+                b'data: {"choices":[{"delta":{"content":" world"}}]}\n',
+                b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+                b"data: [DONE]\n",
+            ]
+
+            async def async_iter():
+                for line in sse_lines:
+                    yield line
+
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.content = async_iter()
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=None)
+
+            with patch.object(runner.client, "post", return_value=mock_response):
+                messages = [{"role": "user", "content": "Hi"}]
+                chunks = []
+                async for chunk in runner._stream_conversation(messages):
+                    chunks.append(chunk)
+
+                # Should have content chunks and DONE
+                assert len(chunks) > 0
+                full_content = "".join(chunks)
+                assert "Hello" in full_content or "world" in full_content
+
+    @pytest.mark.asyncio
+    async def test_stream_conversation_handles_error(self, config):
+        """Test _stream_conversation handles AI request failure."""
+        runner = SessionRunner(config)
+        async with runner:
+            mock_response = AsyncMock()
+            mock_response.status = 500
+            mock_response.text = AsyncMock(return_value="Internal Server Error")
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=None)
+
+            with patch.object(runner.client, "post", return_value=mock_response):
+                messages = [{"role": "user", "content": "Test"}]
+                chunks = []
+                async for chunk in runner._stream_conversation(messages):
+                    chunks.append(chunk)
+
+                # Should yield error content
+                full_content = "".join(chunks)
+                assert "Error" in full_content
+
+    @pytest.mark.asyncio
+    async def test_stream_conversation_with_tool_calls(self, config):
+        """Test _stream_conversation handles tool calls and yields thinking."""
+        runner = SessionRunner(config)
+        async with runner:
+            # Create a tool
+            tool_file = config.tools_dir() / "echo.py"
+            await tool_file.write_text(
+                """
+async def tool(message: str) -> str:
+    '''Echo tool.
+
+    Args:
+        message: The message to echo.
+
+    Returns:
+        The echoed message.
+    '''
+    return message
+"""
+            )
+            tool_schema = await load_tool_from_file(tool_file)
+            if tool_schema:
+                runner.registry.register(tool_schema)
+
+            # First response with tool call
+            sse_lines_tool = [
+                b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1",'
+                b'"function":{"name":"echo","arguments":"{\\"mes"}}]}}]}\n',
+                b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,'
+                b'"function":{"arguments":"sage\\": \\"test\\"}"}}]}}\n',
+                b"data: [DONE]\n",
+            ]
+
+            # Second response after tool execution
+            sse_lines_final = [
+                b'data: {"choices":[{"delta":{"content":"Done"}}]}\n',
+                b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+                b"data: [DONE]\n",
+            ]
+
+            call_count = 0
+
+            def make_async_iter(lines):
+                async def async_iter():
+                    for line in lines:
+                        yield line
+
+                return async_iter()
+
+            def mock_post_side_effect(*_args, **_kwargs):
+                nonlocal call_count
+                call_count += 1
+
+                mock_response = AsyncMock()
+                mock_response.status = 200
+                mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+                mock_response.__aexit__ = AsyncMock(return_value=None)
+
+                if call_count == 1:
+                    mock_response.content = make_async_iter(sse_lines_tool)
+                else:
+                    mock_response.content = make_async_iter(sse_lines_final)
+
+                return mock_response
+
+            with patch.object(runner.client, "post", side_effect=mock_post_side_effect):
+                messages = [{"role": "user", "content": "Test"}]
+                chunks = []
+                async for chunk in runner._stream_conversation(messages):
+                    chunks.append(chunk)
+
+                # Should include thinking block
+                full_content = "".join(chunks)
+                assert "<thinking>" in full_content
+                assert "[Tool: echo]" in full_content

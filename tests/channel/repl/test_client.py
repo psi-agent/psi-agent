@@ -280,3 +280,49 @@ class TestReplClient:
 
         with pytest.raises(RuntimeError, match="Client not initialized"):
             await client.send_message_stream("Hi")
+
+    @pytest.mark.asyncio
+    async def test_send_message_timeout(self, client: ReplClient) -> None:
+        """Test handling timeout error in send_message."""
+
+        with (
+            patch("aiohttp.UnixConnector") as mock_connector,
+            patch("aiohttp.ClientSession") as mock_session,
+        ):
+            mock_connector_instance = AsyncMock()
+            mock_connector_instance.close = AsyncMock()
+            mock_connector.return_value = mock_connector_instance
+
+            mock_session_instance = MagicMock()
+            mock_session_instance.post = MagicMock(side_effect=TimeoutError())
+            mock_session_instance.close = AsyncMock()
+            mock_session.return_value = mock_session_instance
+
+            async with client:
+                result = await client.send_message("Hi")
+
+                assert "Error" in result
+                assert "timeout" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_send_message_stream_timeout(self, client: ReplClient) -> None:
+        """Test handling timeout error in send_message_stream."""
+
+        with (
+            patch("aiohttp.UnixConnector") as mock_connector,
+            patch("aiohttp.ClientSession") as mock_session,
+        ):
+            mock_connector_instance = AsyncMock()
+            mock_connector_instance.close = AsyncMock()
+            mock_connector.return_value = mock_connector_instance
+
+            mock_session_instance = MagicMock()
+            mock_session_instance.post = MagicMock(side_effect=TimeoutError())
+            mock_session_instance.close = AsyncMock()
+            mock_session.return_value = mock_session_instance
+
+            async with client:
+                result = await client.send_message_stream("Hi")
+
+                assert "Error" in result
+                assert "timeout" in result.lower()
