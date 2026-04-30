@@ -66,6 +66,15 @@ def translate_openai_to_anthropic(
         if param in openai_request:
             anthropic_request[param] = openai_request[param]
 
+    # Pass through thinking toggle
+    if "thinking" in openai_request:
+        anthropic_request["thinking"] = openai_request["thinking"]
+
+    # Map reasoning_effort to output_config.effort
+    reasoning_effort = openai_request.get("reasoning_effort")
+    if reasoning_effort is not None:
+        anthropic_request["output_config"] = {"effort": reasoning_effort}
+
     # Add default max_tokens if not provided
     if "max_tokens" not in anthropic_request:
         anthropic_request["max_tokens"] = max_tokens

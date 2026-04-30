@@ -416,3 +416,63 @@ class TestTranslateAnthropicStream:
 
         assert len(chunks) == 3
         assert '"finish_reason": "stop"' in chunks[1]
+
+
+class TestReasoningEffortTranslation:
+    """Tests for reasoning_effort to output_config.effort translation."""
+
+    def test_reasoning_effort_mapped_to_output_config(self) -> None:
+        """Test reasoning_effort maps to output_config.effort."""
+        openai_request = {
+            "messages": [{"role": "user", "content": "Hello"}],
+            "reasoning_effort": "high",
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert result["output_config"] == {"effort": "high"}
+
+    def test_no_reasoning_effort(self) -> None:
+        """Test no output_config when reasoning_effort is absent."""
+        openai_request = {
+            "messages": [{"role": "user", "content": "Hello"}],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert "output_config" not in result
+
+    def test_thinking_toggle_passed_through(self) -> None:
+        """Test thinking toggle is passed through unchanged."""
+        openai_request = {
+            "messages": [{"role": "user", "content": "Hello"}],
+            "thinking": {"type": "enabled"},
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert result["thinking"] == {"type": "enabled"}
+
+    def test_thinking_disabled(self) -> None:
+        """Test thinking disabled is passed through."""
+        openai_request = {
+            "messages": [{"role": "user", "content": "Hello"}],
+            "thinking": {"type": "disabled"},
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert result["thinking"] == {"type": "disabled"}
+
+    def test_both_thinking_and_reasoning_effort(self) -> None:
+        """Test both thinking and reasoning_effort are handled."""
+        openai_request = {
+            "messages": [{"role": "user", "content": "Hello"}],
+            "thinking": {"type": "enabled"},
+            "reasoning_effort": "medium",
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert result["thinking"] == {"type": "enabled"}
+        assert result["output_config"] == {"effort": "medium"}
