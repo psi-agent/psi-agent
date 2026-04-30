@@ -309,17 +309,17 @@ class TelegramBot:
 
         # Handle message splitting if content exceeds limit
         if len(final_content) > TELEGRAM_MAX_MESSAGE_LENGTH:
-            truncated_content = final_content[:TELEGRAM_MAX_MESSAGE_LENGTH]
-            # Edit first message with truncated content (skip if unchanged)
-            if truncated_content != last_sent_content:
+            chunks = split_message(final_content)
+            first_chunk = chunks[0]
+            # Edit first message with first chunk (skip if unchanged)
+            if first_chunk != last_sent_content:
                 try:
-                    await sent_message.edit_text(truncated_content)
-                    last_sent_content = truncated_content
+                    await sent_message.edit_text(first_chunk)
+                    last_sent_content = first_chunk
                 except Exception as e:
                     logger.error(f"Failed to edit final message: {e}")
 
             # Send remaining content as new messages
-            chunks = split_message(final_content)
             assert update.message is not None
             for chunk in chunks[1:]:  # Skip first chunk (already sent)
                 try:
