@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 from loguru import logger
 from telegram import Update
@@ -76,12 +77,31 @@ class TelegramBot:
         if self.config.proxy:
             builder = builder.proxy(self.config.proxy)
             # Log proxy without credentials (show host only)
-            proxy_display = (
-                self.config.proxy.split("@")[-1] if "@" in self.config.proxy else self.config.proxy
-            )
-            logger.debug(f"Using proxy: {proxy_display}")
+            proxy_display = self._mask_proxy_credentials(self.config.proxy)
+            logger.info(f"Using proxy: {proxy_display}")
 
-        self._app = builder.build()
+        try:
+            self._app = builder.build()
+        except ImportError as e:
+            if "socksio" in str(e).lower():
+                msg = (
+                    "SOCKS5 proxy support requires the 'socksio' package.\n"
+                    "Install it with one of:\n"
+                    "  pip install 'python-telegram-bot[socks]'\n"
+                    "  uv sync --extra socks"
+                )
+                raise RuntimeError(msg) from e
+            raise
+        except RuntimeError as e:
+            if "Socks5 proxies" in str(e):
+                msg = (
+                    "SOCKS5 proxy support requires the 'socksio' package.\n"
+                    "Install it with one of:\n"
+                    "  pip install 'python-telegram-bot[socks]'\n"
+                    "  uv sync --extra socks"
+                )
+                raise RuntimeError(msg) from e
+            raise
 
         # Add handlers
         self._app.add_handler(CommandHandler("start", self._start_command))
@@ -101,6 +121,30 @@ class TelegramBot:
                 await self._stop_event.wait()
             finally:
                 await self._stop()
+
+    @staticmethod
+    def _mask_proxy_credentials(proxy_url: str) -> str:
+        """Mask credentials in proxy URL for safe logging.
+
+        Args:
+            proxy_url: The proxy URL potentially containing credentials.
+
+        Returns:
+            Proxy URL with credentials replaced by '***'.
+        """
+        try:
+            parsed = urlparse(proxy_url)
+            if parsed.username or parsed.password:
+                # Replace credentials with ***
+                netloc = f"***@{parsed.hostname}"
+                if parsed.port:
+                    netloc += f":{parsed.port}"
+                masked = parsed._replace(netloc=netloc)
+                return urlunparse(masked)
+            return proxy_url
+        except Exception:
+            # If parsing fails, return original
+            return proxy_url
 
     async def _stop(self) -> None:
         """Stop the bot gracefully."""
