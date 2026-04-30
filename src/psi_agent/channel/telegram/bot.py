@@ -16,6 +16,7 @@ from psi_agent.channel.telegram.client import TelegramClient
 from psi_agent.channel.telegram.config import TelegramConfig
 
 TELEGRAM_MAX_MESSAGE_LENGTH = 4096
+TYPING_INTERVAL = 4  # seconds between typing indicator sends
 
 
 def split_message(text: str, max_length: int = TELEGRAM_MAX_MESSAGE_LENGTH) -> list[str]:
@@ -215,6 +216,24 @@ class TelegramBot:
                 logger.error(f"Failed to send message: {e}")
                 break
 
+    @staticmethod
+    async def _send_typing_periodically(chat: Any) -> None:
+        """Send typing action periodically until cancelled.
+
+        Runs in a background task, sending typing indicators at regular intervals
+        until cancelled. Handles errors gracefully without interrupting the task.
+
+        Args:
+            chat: The Telegram chat object to send typing actions to.
+        """
+        while True:
+            await asyncio.sleep(TYPING_INTERVAL)
+            try:
+                await chat.send_action(ChatAction.TYPING)
+                logger.debug("Sent typing indicator")
+            except Exception as e:
+                logger.debug(f"Failed to send typing indicator: {e}")
+
     async def _handle_message_streaming(
         self, update: Update, user_id: str, message_text: str
     ) -> None:
@@ -280,9 +299,12 @@ class TelegramBot:
         if update.message is None:
             return
 
-        # Send typing indicator before streaming starts
+        # Send typing indicator before streaming starts and start periodic typing task
+        typing_task: asyncio.Task[None] | None = None
         try:
             await update.message.chat.send_action(ChatAction.TYPING)
+            # Start periodic typing indicator task
+            typing_task = asyncio.create_task(self._send_typing_periodically(update.message.chat))
         except Exception as e:
             logger.debug(f"Failed to send typing indicator: {e}")
 
@@ -290,6 +312,11 @@ class TelegramBot:
             sent_message = await update.message.reply_text("...")
         except Exception as e:
             logger.error(f"Failed to send initial message: {e}")
+            # Cancel typing task if message send failed
+            if typing_task is not None and not typing_task.done():
+                typing_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await typing_task
             return
 
         # Start the periodic flush background task
@@ -299,6 +326,11 @@ class TelegramBot:
             # Get streaming response
             response = await self.client.send_message_stream(message_text, user_id, on_chunk)
         finally:
+            # Cancel typing task when streaming ends
+            if typing_task is not None and not typing_task.done():
+                typing_task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await typing_task
             # Stop the periodic flush task
             stop_flush.set()
             with contextlib.suppress(asyncio.CancelledError):
