@@ -73,9 +73,10 @@ class TelegramBot:
         """Start the Telegram bot."""
         builder = Application.builder().token(self.config.token)
 
-        # Configure proxy if provided
+        # Configure proxy if provided (for both API requests and updater polling)
         if self.config.proxy:
             builder = builder.proxy(self.config.proxy)
+            builder = builder.get_updates_proxy(self.config.proxy)
             # Log proxy without credentials (show host only)
             proxy_display = self._mask_proxy_credentials(self.config.proxy)
             logger.info(f"Using proxy: {proxy_display}")
