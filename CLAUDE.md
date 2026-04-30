@@ -708,4 +708,13 @@ uv run psi-agent channel repl \
 
 ## Git 提交规范
 
-使用 OpenSpec 工作流完成变更后，归档目录（`openspec/changes/archive/YYYY-MM-DD-<change-name>/`）必须一同提交，以便追溯变更动机和设计决策。
+> **⚠️ 重要：OpenSpec 归档目录必须提交到 Git**
+>
+> 使用 OpenSpec 工作流完成变更后，**必须**将归档目录（`openspec/changes/archive/YYYY-MM-DD-<change-name>/`）连同代码变更一起提交到 Git。这些归档文件记录了变更动机、设计决策和实现步骤，是项目历史的重要组成部分。
+>
+> **提交前检查清单：**
+> 1. 运行 `git status` 检查是否有未跟踪的 `openspec/changes/` 目录
+> 2. 确保所有 `openspec/changes/archive/` 目录已添加到暂存区
+> 3. 确保新的 `openspec/specs/` 目录（如有）已添加到暂存区
+>
+> **禁止遗漏归档目录的提交。**
