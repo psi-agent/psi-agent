@@ -233,11 +233,12 @@ class TelegramBot:
         content_buffer: list[str] = []
         sent_message: Any = None
         stop_flush = asyncio.Event()
-        last_flushed_content: str = ""  # Track last flushed content to avoid redundant edits
+        flush_task: asyncio.Task[None] | None = None
+        last_sent_content: str | None = None  # Track last sent content to avoid duplicate edits
 
         async def flush_buffer() -> None:
             """Flush the buffer content to the sent message."""
-            nonlocal last_flushed_content
+            nonlocal last_sent_content
 
             if sent_message is None or not content_buffer:
                 return
@@ -246,13 +247,13 @@ class TelegramBot:
             # Truncate if exceeds limit during streaming
             display_content = current_content[:TELEGRAM_MAX_MESSAGE_LENGTH]
 
-            # Skip edit if content hasn't changed
-            if display_content == last_flushed_content:
+            # Skip edit if content unchanged (avoids Telegram API error)
+            if display_content == last_sent_content:
                 return
 
             try:
                 await sent_message.edit_text(display_content)
-                last_flushed_content = display_content
+                last_sent_content = display_content
             except Exception as e:
                 logger.error(f"Failed to edit message: {e}")
 
@@ -308,11 +309,14 @@ class TelegramBot:
 
         # Handle message splitting if content exceeds limit
         if len(final_content) > TELEGRAM_MAX_MESSAGE_LENGTH:
-            # Edit first message with truncated content
-            try:
-                await sent_message.edit_text(final_content[:TELEGRAM_MAX_MESSAGE_LENGTH])
-            except Exception as e:
-                logger.error(f"Failed to edit final message: {e}")
+            truncated_content = final_content[:TELEGRAM_MAX_MESSAGE_LENGTH]
+            # Edit first message with truncated content (skip if unchanged)
+            if truncated_content != last_sent_content:
+                try:
+                    await sent_message.edit_text(truncated_content)
+                    last_sent_content = truncated_content
+                except Exception as e:
+                    logger.error(f"Failed to edit final message: {e}")
 
             # Send remaining content as new messages
             chunks = split_message(final_content)
@@ -324,8 +328,10 @@ class TelegramBot:
                     logger.error(f"Failed to send additional message: {e}")
                     break
         else:
-            # Edit with complete content
-            try:
-                await sent_message.edit_text(final_content)
-            except Exception as e:
-                logger.error(f"Failed to edit final message: {e}")
+            # Edit with complete content (skip if unchanged)
+            if final_content != last_sent_content:
+                try:
+                    await sent_message.edit_text(final_content)
+                    last_sent_content = final_content
+                except Exception as e:
+                    logger.error(f"Failed to edit final message: {e}")
