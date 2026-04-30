@@ -603,6 +603,7 @@ class TestProxyValidation:
         mock_builder = MagicMock()
         mock_builder.token.return_value = mock_builder
         mock_builder.proxy.return_value = mock_builder
+        mock_builder.get_updates_proxy.return_value = mock_builder
         mock_builder.build.side_effect = ImportError(
             "Using SOCKS proxy, but the 'socksio' package is not installed"
         )
@@ -618,6 +619,10 @@ class TestProxyValidation:
         assert "socksio" in error_msg.lower()
         assert "pip install" in error_msg or "uv sync" in error_msg
 
+        # Verify both proxy methods were called
+        mock_builder.proxy.assert_called_once_with("socks5://localhost:1080")
+        mock_builder.get_updates_proxy.assert_called_once_with("socks5://localhost:1080")
+
     @pytest.mark.asyncio
     async def test_socks5_proxy_runtime_error(self):
         """Test SOCKS5 proxy raises clear error when python-telegram-bot raises RuntimeError."""
@@ -632,6 +637,7 @@ class TestProxyValidation:
         mock_builder = MagicMock()
         mock_builder.token.return_value = mock_builder
         mock_builder.proxy.return_value = mock_builder
+        mock_builder.get_updates_proxy.return_value = mock_builder
         mock_builder.build.side_effect = RuntimeError(
             "To use Socks5 proxies, PTB must be installed via pip install"
         )
@@ -646,6 +652,10 @@ class TestProxyValidation:
         error_msg = str(exc_info.value)
         assert "socksio" in error_msg.lower()
         assert "pip install" in error_msg or "uv sync" in error_msg
+
+        # Verify both proxy methods were called
+        mock_builder.proxy.assert_called_once_with("socks5://localhost:1080")
+        mock_builder.get_updates_proxy.assert_called_once_with("socks5://localhost:1080")
 
     @pytest.mark.asyncio
     async def test_http_proxy_no_extra_dependency(self):
@@ -671,6 +681,7 @@ class TestProxyValidation:
         mock_builder = MagicMock()
         mock_builder.token.return_value = mock_builder
         mock_builder.proxy.return_value = mock_builder
+        mock_builder.get_updates_proxy.return_value = mock_builder
         mock_builder.build.return_value = mock_app
 
         # Set stop_event so start() doesn't hang waiting forever
@@ -679,6 +690,10 @@ class TestProxyValidation:
         with patch("psi_agent.channel.telegram.bot.Application.builder", return_value=mock_builder):
             # This should not raise any error about socksio
             await bot.start()
+
+        # Verify both proxy methods were called
+        mock_builder.proxy.assert_called_once_with("http://localhost:8080")
+        mock_builder.get_updates_proxy.assert_called_once_with("http://localhost:8080")
 
     @pytest.mark.asyncio
     async def test_import_error_non_socksio(self):
@@ -694,6 +709,7 @@ class TestProxyValidation:
         mock_builder = MagicMock()
         mock_builder.token.return_value = mock_builder
         mock_builder.proxy.return_value = mock_builder
+        mock_builder.get_updates_proxy.return_value = mock_builder
         mock_builder.build.side_effect = ImportError("Some other import error")
 
         with (
@@ -703,6 +719,10 @@ class TestProxyValidation:
             await bot.start()
 
         assert "Some other import error" in str(exc_info.value)
+
+        # Verify both proxy methods were called
+        mock_builder.proxy.assert_called_once_with("socks5://localhost:1080")
+        mock_builder.get_updates_proxy.assert_called_once_with("socks5://localhost:1080")
 
     @pytest.mark.asyncio
     async def test_runtime_error_non_socks5(self):
@@ -718,6 +738,7 @@ class TestProxyValidation:
         mock_builder = MagicMock()
         mock_builder.token.return_value = mock_builder
         mock_builder.proxy.return_value = mock_builder
+        mock_builder.get_updates_proxy.return_value = mock_builder
         mock_builder.build.side_effect = RuntimeError("Some other runtime error")
 
         with (
@@ -727,6 +748,10 @@ class TestProxyValidation:
             await bot.start()
 
         assert "Some other runtime error" in str(exc_info.value)
+
+        # Verify both proxy methods were called
+        mock_builder.proxy.assert_called_once_with("socks5://localhost:1080")
+        mock_builder.get_updates_proxy.assert_called_once_with("socks5://localhost:1080")
 
 
 class TestProxyCredentialMasking:
