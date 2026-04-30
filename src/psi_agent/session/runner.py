@@ -385,12 +385,20 @@ class SessionRunner:
                             chunk = json.loads(line_str[6:])
                             delta = chunk.get("choices", [{}])[0].get("delta", {})
 
-                            if "content" in delta and delta["content"] is not None:
-                                content_chunks.append(delta["content"])
-                                logger.debug(f"Stream content chunk: {delta['content'][:100]}...")
+                            content = delta.get("content")
+                            if content is not None:
+                                content_chunks.append(content)
+                                logger.debug(f"Stream content chunk: {content}")
 
-                            if delta.get("tool_calls"):
-                                tool_calls_data.extend(delta["tool_calls"])
+                            tool_calls = delta.get("tool_calls")
+                            if tool_calls is not None:
+                                tool_calls_data.extend(tool_calls)
+                                for tc in tool_calls:
+                                    func = tc.get("function", {})
+                                    name = func.get("name")
+                                    args = func.get("arguments")
+                                    if name is not None or args is not None:
+                                        logger.debug(f"Stream tool_call: name={name}, args={args}")
                         except json.JSONDecodeError:
                             pass
 
@@ -554,12 +562,20 @@ class SessionRunner:
                             chunk = json.loads(line_str[6:])
                             delta = chunk.get("choices", [{}])[0].get("delta", {})
 
-                            if "content" in delta and delta["content"] is not None:
-                                content_chunks.append(delta["content"])
-                                logger.debug(f"Stream content chunk: {delta['content'][:100]}...")
+                            content = delta.get("content")
+                            if content is not None:
+                                content_chunks.append(content)
+                                logger.debug(f"Stream content chunk: {content}")
 
-                            if delta.get("tool_calls"):
-                                tool_calls_data.extend(delta["tool_calls"])
+                            tool_calls = delta.get("tool_calls")
+                            if tool_calls is not None:
+                                tool_calls_data.extend(tool_calls)
+                                for tc in tool_calls:
+                                    func = tc.get("function", {})
+                                    name = func.get("name")
+                                    args = func.get("arguments")
+                                    if name is not None or args is not None:
+                                        logger.debug(f"Stream tool_call: name={name}, args={args}")
                         except json.JSONDecodeError:
                             pass
 
