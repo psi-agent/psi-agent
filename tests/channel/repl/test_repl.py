@@ -134,6 +134,63 @@ class TestRepl:
             assert call_args[0][0] == "Hello"
 
 
+class TestReplNonStreaming:
+    """Tests for REPL non-streaming mode."""
+
+    @pytest.fixture
+    def config(self) -> ReplConfig:
+        """Create test config with streaming disabled."""
+        return ReplConfig(session_socket="/tmp/test.sock", stream=False)
+
+    @pytest.fixture
+    def repl(self, config: ReplConfig) -> Repl:
+        """Create test REPL with non-streaming config."""
+        return Repl(config)
+
+    @pytest.mark.asyncio
+    async def test_non_streaming_uses_send_message(self, repl: Repl) -> None:
+        """Test non-streaming mode uses send_message instead of send_message_stream."""
+        inputs = ["Hello", None]  # Message, then EOF
+        input_iter = iter(inputs)
+
+        async def mock_read() -> str | None:
+            return next(input_iter, None)
+
+        mock_send = AsyncMock(return_value="Response")
+        with (
+            patch.object(repl, "_read_input", mock_read),
+            patch.object(repl.client, "send_message", mock_send),
+            patch("builtins.print"),
+        ):
+            await repl.run()
+
+            # send_message should be called (not send_message_stream)
+            assert mock_send.called
+            call_args = mock_send.call_args
+            assert call_args[0][0] == "Hello"
+
+    @pytest.mark.asyncio
+    async def test_non_streaming_displays_response(self, repl: Repl) -> None:
+        """Test non-streaming mode displays complete response."""
+        inputs = ["Hello", None]
+        input_iter = iter(inputs)
+
+        async def mock_read() -> str | None:
+            return next(input_iter, None)
+
+        mock_send = AsyncMock(return_value="Complete response")
+        with (
+            patch.object(repl, "_read_input", mock_read),
+            patch.object(repl.client, "send_message", mock_send),
+            patch("builtins.print") as mock_print,
+        ):
+            await repl.run()
+
+            # Response should be printed
+            print_calls = [str(call) for call in mock_print.call_args_list]
+            assert any("Complete response" in str(call) for call in print_calls)
+
+
 class TestReplHistory:
     """Tests for REPL history navigation."""
 
