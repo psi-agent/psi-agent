@@ -797,9 +797,9 @@ async def tool(message: str) -> str:
                 async for chunk in runner._stream_conversation(messages):
                     chunks.append(chunk)
 
-                # Should include thinking block
+                # Should include reasoning field with tool call info
                 full_content = "".join(chunks)
-                assert "<thinking>" in full_content
+                assert '"reasoning"' in full_content
                 assert "[Tool: echo]" in full_content
 
     @pytest.mark.asyncio
@@ -938,9 +938,9 @@ async def tool(message: str) -> str:
                 async for chunk in runner._stream_conversation(messages):
                     chunks.append(chunk)
 
-                # Should process tool calls and include thinking block
+                # Should process tool calls and include reasoning field
                 full_content = "".join(chunks)
-                assert "<thinking>" in full_content
+                assert '"reasoning"' in full_content
                 assert "[Tool: echo]" in full_content
 
     @pytest.mark.asyncio
