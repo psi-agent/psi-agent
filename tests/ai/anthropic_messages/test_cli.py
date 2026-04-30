@@ -121,6 +121,8 @@ class TestAnthropicMessagesCliCall:
             api_key="test-key",
             base_url="https://custom.api.com",
             max_tokens=8192,
+            thinking=None,
+            reasoning_effort=None,
         )
 
     @patch("psi_agent.ai.anthropic_messages.cli.asyncio.run")

@@ -134,6 +134,8 @@ class TestOpenaiCompletionsCliCall:
             model="gpt-4",
             api_key="test-key",
             base_url="https://custom.api.com/v1",
+            thinking=None,
+            reasoning_effort=None,
         )
 
     @patch("psi_agent.ai.openai_completions.cli.asyncio.run")
