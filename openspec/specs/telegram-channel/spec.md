@@ -151,3 +151,94 @@ The Telegram channel CLI SHALL mask the `--token` and `--proxy` arguments from t
 - **WHEN** `psi-channel-telegram` is started with `--proxy socks5://user:pass@host:port`
 - **THEN** the process title SHALL NOT contain the proxy credentials
 - **AND** the process title SHALL show `--proxy ***`
+
+### Requirement: Telegram channel CLI supports streaming configuration
+
+The Telegram channel CLI SHALL support streaming mode configuration via command-line arguments.
+
+#### Scenario: Default streaming mode
+- **WHEN** `psi-agent channel telegram --token <token> --session-socket <path>` is invoked
+- **THEN** streaming mode SHALL be enabled by default
+
+#### Scenario: Disable streaming with flag
+- **WHEN** `psi-agent channel telegram --token <token> --session-socket <path> --no-stream` is invoked
+- **THEN** streaming mode SHALL be disabled
+- **AND** the channel SHALL wait for complete response before sending
+
+#### Scenario: Configure stream interval
+- **WHEN** `psi-agent channel telegram --token <token> --session-socket <path> --stream-interval 2.0` is invoked
+- **THEN** the channel SHALL use 2.0 second as the minimum edit interval
+
+#### Scenario: Stream interval is a float
+- **WHEN** `--stream-interval` is specified
+- **THEN** the value SHALL be parsed as a float
+- **AND** support values like 0.5, 1.0, 2.5
+
+### Requirement: Telegram channel supports streaming output via message editing
+
+The Telegram channel SHALL support streaming output by editing messages in real-time when streaming mode is enabled.
+
+#### Scenario: Streaming mode enabled by default
+- **WHEN** Telegram channel starts without `--no-stream` flag
+- **THEN** the channel SHALL use streaming mode for message responses
+- **AND** edit messages in real-time as content arrives
+
+#### Scenario: Streaming message editing
+- **WHEN** streaming mode is enabled and a chunk arrives from session
+- **THEN** the channel SHALL edit the previously sent message with new content
+- **AND** accumulate content across multiple edits
+
+#### Scenario: First chunk sends initial message
+- **WHEN** the first streaming chunk arrives
+- **THEN** the channel SHALL send a new message to Telegram
+- **AND** subsequent chunks SHALL edit this message
+
+### Requirement: Telegram channel buffers streaming chunks by time interval
+
+The Telegram channel SHALL buffer streaming chunks and update messages at configurable time intervals to avoid API rate limits.
+
+#### Scenario: Buffer chunks within interval
+- **WHEN** multiple chunks arrive within the configured interval
+- **THEN** the channel SHALL buffer all chunks
+- **AND** send a single edit at the end of the interval
+
+#### Scenario: Default interval is 1 second
+- **WHEN** Telegram channel starts without `--stream-interval` flag
+- **THEN** the channel SHALL use 1.0 second as default interval
+
+#### Scenario: Custom interval configuration
+- **WHEN** Telegram channel starts with `--stream-interval 0.5`
+- **THEN** the channel SHALL use 0.5 second as the update interval
+
+### Requirement: Telegram channel handles long streaming messages
+
+The Telegram channel SHALL handle streaming messages that exceed Telegram's 4096 character limit.
+
+#### Scenario: Message exceeds limit during streaming
+- **WHEN** accumulated streaming content exceeds 4096 characters
+- **THEN** the channel SHALL truncate the displayed message to 4096 characters
+- **AND** send remaining content as a new message when streaming completes
+
+#### Scenario: Final message splitting
+- **WHEN** streaming completes and total content exceeds 4096 characters
+- **THEN** the channel SHALL split the complete content into multiple messages
+- **AND** use existing `split_message()` function for splitting
+
+### Requirement: Telegram channel client supports streaming requests
+
+The Telegram channel client SHALL provide a streaming method for communicating with psi-session.
+
+#### Scenario: Streaming method sends stream request
+- **WHEN** `send_message_stream()` is called
+- **THEN** the client SHALL send request with `stream: true`
+- **AND** invoke callback for each received chunk
+
+#### Scenario: Non-streaming method sends regular request
+- **WHEN** `send_message()` is called
+- **THEN** the client SHALL send request with `stream: false`
+- **AND** wait for complete response
+
+#### Scenario: Streaming callback receives chunks
+- **WHEN** session returns streaming (SSE) response
+- **THEN** the callback SHALL be invoked for each content chunk
+- **AND** chunks SHALL be passed as strings

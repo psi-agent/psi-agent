@@ -138,7 +138,25 @@ class TelegramBot:
 
         logger.info(f"Received message from {user_id}: {message_text[:50]}...")
 
-        # Forward to session
+        # Use streaming or non-streaming based on config
+        if self.config.stream:
+            await self._handle_message_streaming(update, user_id, message_text)
+        else:
+            await self._handle_message_non_streaming(update, user_id, message_text)
+
+    async def _handle_message_non_streaming(
+        self, update: Update, user_id: str, message_text: str
+    ) -> None:
+        """Handle message with non-streaming response.
+
+        Args:
+            update: The Telegram update.
+            user_id: The user identifier.
+            message_text: The message text.
+        """
+        if update.message is None:
+            return
+
         response = await self.client.send_message(message_text, user_id)
 
         # Split and send response
@@ -149,3 +167,96 @@ class TelegramBot:
             except Exception as e:
                 logger.error(f"Failed to send message: {e}")
                 break
+
+    async def _handle_message_streaming(
+        self, update: Update, user_id: str, message_text: str
+    ) -> None:
+        """Handle message with streaming response using message editing.
+
+        Args:
+            update: The Telegram update.
+            user_id: The user identifier.
+            message_text: The message text.
+        """
+        # Buffer for accumulating content
+        content_buffer: list[str] = []
+        last_edit_time: float = 0.0
+        sent_message: Any = None
+        edit_task: asyncio.Task[None] | None = None
+
+        async def edit_message() -> None:
+            """Edit the sent message with current buffer content."""
+            nonlocal last_edit_time
+
+            if sent_message is None:
+                return
+
+            current_content = "".join(content_buffer)
+            # Truncate if exceeds limit during streaming
+            display_content = current_content[:TELEGRAM_MAX_MESSAGE_LENGTH]
+
+            try:
+                await sent_message.edit_text(display_content)
+                last_edit_time = asyncio.get_running_loop().time()
+            except Exception as e:
+                logger.error(f"Failed to edit message: {e}")
+
+        def on_chunk(chunk: str) -> None:
+            """Callback for each streaming chunk."""
+            nonlocal edit_task
+
+            content_buffer.append(chunk)
+
+            # Check if we should schedule an edit
+            current_time = asyncio.get_running_loop().time()
+            time_since_last_edit = current_time - last_edit_time
+
+            if time_since_last_edit >= self.config.stream_interval and (
+                edit_task is None or edit_task.done()
+            ):
+                # Schedule edit task
+                edit_task = asyncio.create_task(edit_message())
+
+        # Send initial message placeholder
+        if update.message is None:
+            return
+
+        try:
+            sent_message = await update.message.reply_text("...")
+        except Exception as e:
+            logger.error(f"Failed to send initial message: {e}")
+            return
+
+        # Get streaming response
+        response = await self.client.send_message_stream(message_text, user_id, on_chunk)
+
+        # Final edit with complete content
+        final_content = "".join(content_buffer) if content_buffer else response
+
+        # Wait for any pending edit task
+        if edit_task is not None and not edit_task.done():
+            await edit_task
+
+        # Handle message splitting if content exceeds limit
+        if len(final_content) > TELEGRAM_MAX_MESSAGE_LENGTH:
+            # Edit first message with truncated content
+            try:
+                await sent_message.edit_text(final_content[:TELEGRAM_MAX_MESSAGE_LENGTH])
+            except Exception as e:
+                logger.error(f"Failed to edit final message: {e}")
+
+            # Send remaining content as new messages
+            chunks = split_message(final_content)
+            assert update.message is not None
+            for chunk in chunks[1:]:  # Skip first chunk (already sent)
+                try:
+                    await update.message.reply_text(chunk)
+                except Exception as e:
+                    logger.error(f"Failed to send additional message: {e}")
+                    break
+        else:
+            # Edit with complete content
+            try:
+                await sent_message.edit_text(final_content)
+            except Exception as e:
+                logger.error(f"Failed to edit final message: {e}")

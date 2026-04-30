@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Any
 
 import aiohttp
@@ -88,6 +89,81 @@ class TelegramClient:
                 content = msg.get("content", "")
                 logger.debug(f"Received response: {content[:100]}...")
                 return content
+
+        except aiohttp.ClientConnectorError as e:
+            logger.error(f"Failed to connect to session: {e}")
+            return f"Error: Failed to connect to session at {self.config.session_socket}"
+        except aiohttp.ClientError as e:
+            logger.error(f"Request failed: {e}")
+            return f"Error: Request failed - {e}"
+        except TimeoutError:
+            logger.error("Request timeout")
+            return "Error: Request timeout"
+
+    async def send_message_stream(
+        self,
+        message: str,
+        user_id: str,
+        on_chunk: Callable[[str], None] | None = None,
+    ) -> str:
+        """Send a message to psi-session with streaming response.
+
+        Args:
+            message: The user message string to send.
+            user_id: The Telegram user identifier (format: telegram:<id>).
+            on_chunk: Optional callback invoked for each content chunk.
+
+        Returns:
+            The complete assistant's response content.
+
+        Raises:
+            RuntimeError: If client is not initialized.
+        """
+        if self._session is None:
+            raise RuntimeError("Client not initialized. Use async context manager.")
+
+        url = "http://localhost/v1/chat/completions"
+        headers = {"Content-Type": "application/json"}
+        body = {
+            "model": "session",
+            "messages": [{"role": "user", "content": message}],
+            "user": user_id,
+            "stream": True,
+        }
+        logger.debug(f"Request body: {json.dumps(body, ensure_ascii=False, indent=2)}")
+
+        logger.debug(f"Sending streaming message to session for user {user_id}")
+
+        try:
+            async with self._session.post(url, headers=headers, json=body) as response:
+                if response.status != 200:
+                    text = await response.text()
+                    logger.error(f"Session returned status {response.status}: {text}")
+                    return f"Error: Session returned status {response.status}"
+
+                # Parse SSE stream
+                content_chunks: list[str] = []
+                async for line in response.content:
+                    line_str = line.decode().strip()
+                    if not line_str or line_str == "data: [DONE]":
+                        continue
+                    if line_str.startswith("data: "):
+                        try:
+                            chunk = json.loads(line_str[6:])
+                            choices = chunk.get("choices", [])
+                            if choices:
+                                delta = choices[0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    content_chunks.append(content)
+                                    if on_chunk is not None:
+                                        on_chunk(content)
+                        except json.JSONDecodeError:
+                            pass
+
+                full_content = "".join(content_chunks)
+                logger.debug(f"Received complete streaming response: {full_content[:100]}...")
+                return full_content
 
         except aiohttp.ClientConnectorError as e:
             logger.error(f"Failed to connect to session: {e}")
