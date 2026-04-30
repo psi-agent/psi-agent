@@ -647,9 +647,9 @@ class SessionRunner:
                 tool_calls_map[index]["id"] = chunk["id"]
             if "function" in chunk:
                 func = chunk["function"]
-                if "name" in func:
+                if func.get("name") is not None:
                     tool_calls_map[index]["function"]["name"] += func["name"]
-                if "arguments" in func:
+                if func.get("arguments") is not None:
                     tool_calls_map[index]["function"]["arguments"] += func["arguments"]
 
         return list(tool_calls_map.values())

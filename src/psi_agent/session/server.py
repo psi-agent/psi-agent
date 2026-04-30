@@ -76,7 +76,7 @@ class SessionServer:
         if user_message is None:
             return web.Response(status=400, text="No user message found")
 
-        logger.debug(f"Processing user message: {user_message.get('content', '')[:100]}...")
+        logger.debug(f"Processing user message: {(user_message.get('content') or '')[:100]}...")
 
         try:
             if stream:

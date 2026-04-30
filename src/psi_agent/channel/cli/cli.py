@@ -95,8 +95,8 @@ async def _handle_streaming(response: aiohttp.ClientResponse) -> str:
             try:
                 chunk = json.loads(line_str[6:])
                 delta = chunk.get("choices", [{}])[0].get("delta", {})
-                if "content" in delta:
-                    content = delta["content"]
+                content = delta.get("content")
+                if content is not None:
                     content_parts.append(content)
                     truncated = content[:100]
                     suffix = "..." if len(content) > 100 else ""

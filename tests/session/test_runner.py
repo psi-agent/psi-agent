@@ -283,6 +283,41 @@ async def test_reconstruct_tool_calls_multiple(config):
     assert result[1]["function"]["name"] == "tool2"
 
 
+def test_reconstruct_tool_calls_null_name(config):
+    """Test _reconstruct_tool_calls handles null name in subsequent chunks."""
+    runner = SessionRunner(config)
+
+    # First chunk has name, subsequent chunks have name: null
+    chunk1 = {"index": 0, "id": "call_1", "function": {"name": "bash", "arguments": ""}}
+    chunk2 = {"index": 0, "function": {"name": None, "arguments": '{"com'}}
+    chunk3 = {"index": 0, "function": {"arguments": 'mand"'}}  # no name field
+    tool_calls_data = [chunk1, chunk2, chunk3]
+
+    # Should not crash
+    result = runner._reconstruct_tool_calls(tool_calls_data)
+
+    assert len(result) == 1
+    assert result[0]["function"]["name"] == "bash"
+    assert result[0]["function"]["arguments"] == '{"command"'
+
+
+def test_reconstruct_tool_calls_null_arguments(config):
+    """Test _reconstruct_tool_calls handles null arguments in chunks."""
+    runner = SessionRunner(config)
+
+    # Chunks with null arguments
+    chunk1 = {"index": 0, "id": "call_1", "function": {"name": "bash", "arguments": None}}
+    chunk2 = {"index": 0, "function": {"arguments": '{"com'}}
+    tool_calls_data = [chunk1, chunk2]
+
+    # Should not crash
+    result = runner._reconstruct_tool_calls(tool_calls_data)
+
+    assert len(result) == 1
+    assert result[0]["function"]["name"] == "bash"
+    assert result[0]["function"]["arguments"] == '{"com'
+
+
 class TestRunnerWorkspaceChanges:
     """Tests for workspace change handling."""
 
