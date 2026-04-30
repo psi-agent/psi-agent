@@ -680,6 +680,54 @@ class TestProxyValidation:
             # This should not raise any error about socksio
             await bot.start()
 
+    @pytest.mark.asyncio
+    async def test_import_error_non_socksio(self):
+        """Test ImportError not related to socksio is re-raised."""
+        config = TelegramConfig(
+            token="test-token",
+            session_socket="/tmp/test.sock",
+            proxy="socks5://localhost:1080",
+        )
+        bot = TelegramBot(config)
+
+        # Mock the builder chain to raise ImportError not related to socksio
+        mock_builder = MagicMock()
+        mock_builder.token.return_value = mock_builder
+        mock_builder.proxy.return_value = mock_builder
+        mock_builder.build.side_effect = ImportError("Some other import error")
+
+        with (
+            patch("psi_agent.channel.telegram.bot.Application.builder", return_value=mock_builder),
+            pytest.raises(ImportError) as exc_info,
+        ):
+            await bot.start()
+
+        assert "Some other import error" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_runtime_error_non_socks5(self):
+        """Test RuntimeError not related to Socks5 is re-raised."""
+        config = TelegramConfig(
+            token="test-token",
+            session_socket="/tmp/test.sock",
+            proxy="socks5://localhost:1080",
+        )
+        bot = TelegramBot(config)
+
+        # Mock the builder chain to raise RuntimeError not related to Socks5
+        mock_builder = MagicMock()
+        mock_builder.token.return_value = mock_builder
+        mock_builder.proxy.return_value = mock_builder
+        mock_builder.build.side_effect = RuntimeError("Some other runtime error")
+
+        with (
+            patch("psi_agent.channel.telegram.bot.Application.builder", return_value=mock_builder),
+            pytest.raises(RuntimeError) as exc_info,
+        ):
+            await bot.start()
+
+        assert "Some other runtime error" in str(exc_info.value)
+
 
 class TestProxyCredentialMasking:
     """Tests for proxy credential masking."""
@@ -709,3 +757,21 @@ class TestProxyCredentialMasking:
         result = TelegramBot._mask_proxy_credentials("user:password@localhost:1080")
         # Should return original since we can't properly parse it
         assert result == "user:password@localhost:1080"
+
+    def test_mask_proxy_credentials_exception_handling(self):
+        """Test masking handles exceptions gracefully."""
+        # Pass an invalid URL that causes urlparse to behave unexpectedly
+        # This tests the except Exception branch
+        result = TelegramBot._mask_proxy_credentials("://invalid")
+        # Should return original when parsing fails
+        assert result == "://invalid"
+
+    def test_mask_proxy_credentials_with_port(self):
+        """Test masking with explicit port."""
+        result = TelegramBot._mask_proxy_credentials("socks5://user:pass@proxy.example.com:1080")
+        assert result == "socks5://***@proxy.example.com:1080"
+
+    def test_mask_proxy_credentials_without_port(self):
+        """Test masking without explicit port."""
+        result = TelegramBot._mask_proxy_credentials("http://user:pass@proxy.example.com")
+        assert result == "http://***@proxy.example.com"
