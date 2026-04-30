@@ -610,14 +610,7 @@ class TestTelegramBotStreaming:
         mock_update.message = mock_message
         mock_update.effective_user = MagicMock(id=123)
 
-        edit_times: list[float] = []
-
-        async def mock_edit(text: str) -> None:
-            import time
-
-            edit_times.append(time.monotonic())
-
-        mock_sent_message.edit_text.side_effect = mock_edit
+        mock_sent_message.edit_text = AsyncMock()
 
         # Mock streaming that takes longer than multiple intervals
         async def mock_stream(_message: str, _user_id: str, on_chunk) -> str:
@@ -668,34 +661,26 @@ class TestTelegramBotStreaming:
 
         mock_sent_message.edit_text.side_effect = mock_edit
 
-        # Mock streaming that takes long enough for multiple intervals
+        # Mock streaming that continuously adds content to trigger multiple edits
         async def mock_stream(_message: str, _user_id: str, on_chunk) -> str:
-            on_chunk("Start ")
-            await asyncio.sleep(0.6)  # Should trigger ~3 flushes
-            on_chunk("End")
-            return "Start End"
-
-        start_time: float = 0.0
-
-        async def track_start_time() -> None:
-            import time
-
-            nonlocal start_time
-            start_time = time.monotonic()
+            for i in range(3):
+                on_chunk(f"Chunk{i} ")
+                await asyncio.sleep(interval)  # Wait exactly one interval per chunk
+            return "Chunk0 Chunk1 Chunk2 "
 
         with patch.object(bot.client, "send_message_stream", mock_stream):
             async with bot.client:
-                await track_start_time()
                 await bot._handle_message_streaming(mock_update, "telegram:123", "Hello")
 
-        # Check that flushes happened at roughly correct intervals
-        # First edit might be quick, subsequent ones should be ~interval apart
-        if len(edit_times) >= 2:
-            # Check at least one gap is approximately the configured interval
-            gaps = [edit_times[i + 1] - edit_times[i] for i in range(len(edit_times) - 1)]
-            # Allow 50% tolerance for test flakiness
-            reasonable_gaps = [g for g in gaps if interval * 0.5 <= g <= interval * 2.0]
-            assert len(reasonable_gaps) >= 1, f"Expected gaps near {interval}s, got {gaps}"
+        # Assert we got enough samples to evaluate timing
+        assert len(edit_times) >= 2, (
+            f"Expected at least 2 edit events to evaluate flush timing, got {len(edit_times)}"
+        )
+        # Check at least one gap is approximately the configured interval
+        gaps = [edit_times[i + 1] - edit_times[i] for i in range(len(edit_times) - 1)]
+        # Allow 50% tolerance for test flakiness
+        reasonable_gaps = [g for g in gaps if interval * 0.5 <= g <= interval * 2.0]
+        assert len(reasonable_gaps) >= 1, f"Expected gaps near {interval}s, got {gaps}"
 
     @pytest.mark.asyncio
     async def test_stream_ends_before_first_interval(self):
@@ -739,7 +724,12 @@ class TestTelegramBotStreaming:
 
     @pytest.mark.asyncio
     async def test_empty_stream_no_crash(self):
-        """Test that an empty stream doesn't cause crashes."""
+        """Test that an empty stream doesn't cause crashes.
+
+        Note: The current implementation still edits the message with empty content
+        at the end. This test verifies no exception is raised, not the spec behavior
+        for empty buffer during periodic flushes.
+        """
         config = TelegramConfig(
             token="test-token", session_socket="/tmp/test.sock", stream=True, stream_interval=0.1
         )
@@ -766,8 +756,9 @@ class TestTelegramBotStreaming:
                 # Should not raise any error
                 await bot._handle_message_streaming(mock_update, "telegram:123", "Hello")
 
-        # Should have at least the final edit (empty or minimal content)
-        assert mock_sent_message.edit_text.call_count >= 1
+        # The current implementation still does a final edit with empty content
+        # This test verifies no crash, not the ideal spec behavior
+        mock_sent_message.edit_text.assert_called()
 
 
 class TestProxyValidation:
