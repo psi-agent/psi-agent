@@ -25,8 +25,13 @@ The CLI SHALL output the agent response to stdout.
 - **THEN** the response content is printed to stdout
 
 #### Scenario: Streaming response output
-- **WHEN** session returns a streaming response with --stream flag
+- **WHEN** session returns a streaming response with `--stream` flag (default)
 - **THEN** each chunk is printed to stdout as it arrives
+
+#### Scenario: Disable streaming with flag
+- **WHEN** CLI is invoked with `--no-stream` flag
+- **THEN** streaming mode SHALL be disabled
+- **AND** the CLI SHALL wait for complete response before output
 
 ### Requirement: CLI exits after response
 

@@ -16,16 +16,16 @@ class TestCliDataclass:
         )
         assert cli.session_socket == "/tmp/test.sock"
         assert cli.message == "Hello, world!"
-        assert cli.no_stream is False  # default
+        assert cli.stream is True  # default
 
     def test_cli_with_no_stream(self) -> None:
-        """Test CLI with no_stream option."""
+        """Test CLI with stream=False option."""
         cli = Cli(
             session_socket="/tmp/test.sock",
             message="Hello",
-            no_stream=True,
+            stream=False,
         )
-        assert cli.no_stream is True
+        assert cli.stream is False
 
     def test_cli_message_attribute(self) -> None:
         """Test CLI message attribute."""

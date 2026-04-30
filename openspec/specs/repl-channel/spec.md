@@ -30,6 +30,11 @@ The REPL SHALL use streaming requests by default for better user experience.
 - **THEN** REPL SHALL print each content chunk immediately
 - **AND** NOT wait for complete response
 
+#### Scenario: Disable streaming with flag
+- **WHEN** REPL is invoked with `--no-stream` flag
+- **THEN** streaming mode SHALL be disabled
+- **AND** REPL SHALL wait for complete response before displaying
+
 ### Requirement: REPL client provides streaming API
 
 The REPL client SHALL provide both streaming and non-streaming methods.

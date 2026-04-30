@@ -13,27 +13,27 @@ class TestReplCli:
         """Test CLI class can be imported."""
         cli = Repl(session_socket="/tmp/test.sock")
         assert cli.session_socket == "/tmp/test.sock"
-        assert cli.no_stream is False  # default
+        assert cli.stream is True  # default
 
     def test_cli_with_no_stream(self) -> None:
-        """Test CLI with no_stream option."""
+        """Test CLI with stream=False option."""
         cli = Repl(
             session_socket="/tmp/test.sock",
-            no_stream=True,
+            stream=False,
         )
-        assert cli.no_stream is True
+        assert cli.stream is False
 
     def test_cli_config_creation(self) -> None:
         """Test CLI creates valid config."""
         cli = Repl(
             session_socket="/tmp/test.sock",
-            no_stream=False,
+            stream=True,
         )
 
         # Verify config can be created from CLI args
         config = ReplConfig(
             session_socket=cli.session_socket,
-            stream=not cli.no_stream,
+            stream=cli.stream,
         )
         assert config.session_socket == "/tmp/test.sock"
         assert config.stream is True
@@ -56,10 +56,10 @@ class TestReplMain:
 class TestReplDefaults:
     """Tests for default values."""
 
-    def test_default_no_stream(self) -> None:
-        """Test default no_stream is False."""
+    def test_default_stream(self) -> None:
+        """Test default stream is True."""
         cli = Repl(session_socket="/tmp/test.sock")
-        assert cli.no_stream is False
+        assert cli.stream is True
 
 
 class TestReplSocketPaths:

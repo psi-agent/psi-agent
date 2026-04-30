@@ -22,7 +22,7 @@ class Telegram:
         session_socket: Path to the Unix socket for communication with psi-session.
         proxy: Optional proxy URL for connecting to Telegram API. Supports socks5://,
             http://, and https:// formats. Defaults to None (direct connection).
-        no_stream: Disable streaming mode (default: streaming enabled).
+        stream: Enable streaming mode (default: streaming enabled).
         stream_interval: Minimum time interval (in seconds) between message edits
             when streaming. Defaults to 1.0.
     """
@@ -30,7 +30,7 @@ class Telegram:
     token: str
     session_socket: str
     proxy: str | None = None
-    no_stream: bool = False
+    stream: bool = True
     stream_interval: float = 1.0
 
     def __call__(self) -> None:
@@ -39,7 +39,7 @@ class Telegram:
 
         logger.info("Starting psi-channel-telegram")
         logger.debug(
-            f"Config: session_socket={self.session_socket}, stream={not self.no_stream}, "
+            f"Config: session_socket={self.session_socket}, stream={self.stream}, "
             f"stream_interval={self.stream_interval}"
         )
 
@@ -47,7 +47,7 @@ class Telegram:
             token=self.token,
             session_socket=self.session_socket,
             proxy=self.proxy,
-            stream=not self.no_stream,
+            stream=self.stream,
             stream_interval=self.stream_interval,
         )
         bot = TelegramBot(config)
