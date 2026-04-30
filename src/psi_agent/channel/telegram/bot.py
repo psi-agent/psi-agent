@@ -219,9 +219,9 @@ class TelegramBot:
     ) -> None:
         """Handle message with streaming response using message editing.
 
-        Uses a time-window buffer mechanism: chunks are accumulated and flushed
-        after stream_interval seconds from the last chunk, ensuring no content
-        is stuck in the buffer even when no new chunks arrive.
+        Uses a background periodic flush mechanism: a background task flushes the
+        buffer every stream_interval seconds during streaming, ensuring users see
+        progressive updates even while the stream is ongoing.
 
         Args:
             update: The Telegram update.
@@ -231,7 +231,7 @@ class TelegramBot:
         # Buffer for accumulating content
         content_buffer: list[str] = []
         sent_message: Any = None
-        flush_task: asyncio.Task[None] | None = None
+        stop_flush = asyncio.Event()
 
         async def flush_buffer() -> None:
             """Flush the buffer content to the sent message."""
@@ -247,28 +247,24 @@ class TelegramBot:
             except Exception as e:
                 logger.error(f"Failed to edit message: {e}")
 
-        async def schedule_flush() -> None:
-            """Wait for stream_interval then flush the buffer."""
-            await asyncio.sleep(self.config.stream_interval)
-            await flush_buffer()
+        async def periodic_flush() -> None:
+            """Background task that flushes buffer every stream_interval seconds."""
+            while not stop_flush.is_set():
+                try:
+                    await asyncio.wait_for(stop_flush.wait(), timeout=self.config.stream_interval)
+                    # stop_flush was set, exit the loop
+                    break
+                except TimeoutError:
+                    # Timeout reached, flush if there's content
+                    await flush_buffer()
 
         def on_chunk(chunk: str) -> None:
             """Callback for each streaming chunk.
 
-            Accumulates the chunk and schedules a flush task. If a flush task
-            is already pending, cancel it and start a new one to ensure flush
-            happens stream_interval seconds after the last chunk.
+            Accumulates the chunk in the buffer. The background periodic_flush
+            task will flush the buffer at regular intervals.
             """
-            nonlocal flush_task
-
             content_buffer.append(chunk)
-
-            # Cancel existing flush task if any
-            if flush_task is not None and not flush_task.done():
-                flush_task.cancel()
-
-            # Schedule new flush task
-            flush_task = asyncio.create_task(schedule_flush())
 
         # Send initial message placeholder
         if update.message is None:
@@ -286,11 +282,15 @@ class TelegramBot:
             logger.error(f"Failed to send initial message: {e}")
             return
 
-        # Get streaming response
-        response = await self.client.send_message_stream(message_text, user_id, on_chunk)
+        # Start the periodic flush background task
+        flush_task = asyncio.create_task(periodic_flush())
 
-        # Wait for any pending flush task to complete
-        if flush_task is not None and not flush_task.done():
+        try:
+            # Get streaming response
+            response = await self.client.send_message_stream(message_text, user_id, on_chunk)
+        finally:
+            # Stop the periodic flush task
+            stop_flush.set()
             with contextlib.suppress(asyncio.CancelledError):
                 await flush_task
 

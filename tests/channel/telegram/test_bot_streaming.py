@@ -585,6 +585,187 @@ class TestTelegramBotStreaming:
         has_batched = any(len(edit) > 1 for edit in captured_edits if edit)
         assert has_batched or len(captured_edits) >= 1  # Either batched or final edit
 
+    @pytest.mark.asyncio
+    async def test_multiple_flushes_during_long_stream(self):
+        """Test that multiple flushes happen during a long streaming session.
+
+        This verifies the core fix: periodic flushes should occur at stream_interval
+        intervals during streaming, not just at the end.
+        """
+        # Use a short interval for faster testing
+        config = TelegramConfig(
+            token="test-token", session_socket="/tmp/test.sock", stream=True, stream_interval=0.1
+        )
+        bot = TelegramBot(config)
+
+        mock_message = AsyncMock()
+        mock_message.text = "Hello"
+        mock_message.reply_text = AsyncMock()
+
+        mock_sent_message = AsyncMock()
+        mock_sent_message.edit_text = AsyncMock()
+        mock_message.reply_text.return_value = mock_sent_message
+
+        mock_update = MagicMock()
+        mock_update.message = mock_message
+        mock_update.effective_user = MagicMock(id=123)
+
+        edit_times: list[float] = []
+
+        async def mock_edit(text: str) -> None:
+            import time
+
+            edit_times.append(time.monotonic())
+
+        mock_sent_message.edit_text.side_effect = mock_edit
+
+        # Mock streaming that takes longer than multiple intervals
+        async def mock_stream(_message: str, _user_id: str, on_chunk) -> str:
+            # Send chunks over time, allowing multiple flush intervals to pass
+            for i in range(5):
+                on_chunk(f"Chunk{i} ")
+                await asyncio.sleep(0.15)  # Longer than stream_interval
+            return "Chunk0 Chunk1 Chunk2 Chunk3 Chunk4 "
+
+        with patch.object(bot.client, "send_message_stream", mock_stream):
+            async with bot.client:
+                await bot._handle_message_streaming(mock_update, "telegram:123", "Hello")
+
+        # Should have multiple edits during streaming (not just one at the end)
+        # With 5 chunks over 0.75s and interval 0.1s, we expect several flushes
+        assert mock_sent_message.edit_text.call_count >= 3
+
+    @pytest.mark.asyncio
+    async def test_flush_timing_approximately_correct(self):
+        """Test that flushes occur at approximately the configured interval."""
+        interval = 0.2
+        config = TelegramConfig(
+            token="test-token", session_socket="/tmp/test.sock", stream=True, stream_interval=interval
+        )
+        bot = TelegramBot(config)
+
+        mock_message = AsyncMock()
+        mock_message.text = "Hello"
+        mock_message.reply_text = AsyncMock()
+
+        mock_sent_message = AsyncMock()
+        mock_sent_message.edit_text = AsyncMock()
+        mock_message.reply_text.return_value = mock_sent_message
+
+        mock_update = MagicMock()
+        mock_update.message = mock_message
+        mock_update.effective_user = MagicMock(id=123)
+
+        edit_times: list[float] = []
+
+        async def mock_edit(text: str) -> None:
+            import time
+
+            edit_times.append(time.monotonic())
+
+        mock_sent_message.edit_text.side_effect = mock_edit
+
+        # Mock streaming that takes long enough for multiple intervals
+        async def mock_stream(_message: str, _user_id: str, on_chunk) -> str:
+            on_chunk("Start ")
+            await asyncio.sleep(0.6)  # Should trigger ~3 flushes
+            on_chunk("End")
+            return "Start End"
+
+        start_time: float = 0.0
+
+        async def track_start_time() -> None:
+            import time
+
+            nonlocal start_time
+            start_time = time.monotonic()
+
+        with patch.object(bot.client, "send_message_stream", mock_stream):
+            async with bot.client:
+                await track_start_time()
+                await bot._handle_message_streaming(mock_update, "telegram:123", "Hello")
+
+        # Check that flushes happened at roughly correct intervals
+        # First edit might be quick, subsequent ones should be ~interval apart
+        if len(edit_times) >= 2:
+            # Check at least one gap is approximately the configured interval
+            gaps = [edit_times[i + 1] - edit_times[i] for i in range(len(edit_times) - 1)]
+            # Allow 50% tolerance for test flakiness
+            reasonable_gaps = [g for g in gaps if interval * 0.5 <= g <= interval * 2.0]
+            assert len(reasonable_gaps) >= 1, f"Expected gaps near {interval}s, got {gaps}"
+
+    @pytest.mark.asyncio
+    async def test_stream_ends_before_first_interval(self):
+        """Test that content is still flushed when stream ends before first interval."""
+        config = TelegramConfig(
+            token="test-token", session_socket="/tmp/test.sock", stream=True, stream_interval=1.0
+        )
+        bot = TelegramBot(config)
+
+        mock_message = AsyncMock()
+        mock_message.text = "Hello"
+        mock_message.reply_text = AsyncMock()
+
+        mock_sent_message = AsyncMock()
+        mock_sent_message.edit_text = AsyncMock()
+        mock_message.reply_text.return_value = mock_sent_message
+
+        mock_update = MagicMock()
+        mock_update.message = mock_message
+        mock_update.effective_user = MagicMock(id=123)
+
+        final_content = None
+
+        async def mock_edit(text: str) -> None:
+            nonlocal final_content
+            final_content = text
+
+        mock_sent_message.edit_text.side_effect = mock_edit
+
+        # Mock streaming that completes immediately
+        async def mock_stream(_message: str, _user_id: str, on_chunk) -> str:
+            on_chunk("Quick response")
+            return "Quick response"
+
+        with patch.object(bot.client, "send_message_stream", mock_stream):
+            async with bot.client:
+                await bot._handle_message_streaming(mock_update, "telegram:123", "Hello")
+
+        # Content should still be flushed at the end
+        assert final_content == "Quick response"
+
+    @pytest.mark.asyncio
+    async def test_empty_stream_no_crash(self):
+        """Test that an empty stream doesn't cause crashes."""
+        config = TelegramConfig(
+            token="test-token", session_socket="/tmp/test.sock", stream=True, stream_interval=0.1
+        )
+        bot = TelegramBot(config)
+
+        mock_message = AsyncMock()
+        mock_message.text = "Hello"
+        mock_message.reply_text = AsyncMock()
+
+        mock_sent_message = AsyncMock()
+        mock_sent_message.edit_text = AsyncMock()
+        mock_message.reply_text.return_value = mock_sent_message
+
+        mock_update = MagicMock()
+        mock_update.message = mock_message
+        mock_update.effective_user = MagicMock(id=123)
+
+        # Mock streaming that returns nothing
+        async def mock_stream(_message: str, _user_id: str, on_chunk) -> str:
+            return ""
+
+        with patch.object(bot.client, "send_message_stream", mock_stream):
+            async with bot.client:
+                # Should not raise any error
+                await bot._handle_message_streaming(mock_update, "telegram:123", "Hello")
+
+        # Should have at least the final edit (empty or minimal content)
+        assert mock_sent_message.edit_text.call_count >= 1
+
 
 class TestProxyValidation:
     """Tests for proxy validation and error handling."""
