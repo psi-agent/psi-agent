@@ -491,3 +491,150 @@ class TestAnthropicMessagesClient:
                 error_data = json.loads(chunks[0].replace("data: ", "").strip())
                 assert "error" in error_data
                 assert error_data["status_code"] == 500
+
+    @pytest.mark.asyncio
+    async def test_streaming_standard_events_passthrough(
+        self, client: AnthropicMessagesClient
+    ) -> None:
+        """Test standard Anthropic events are passed through."""
+        from unittest.mock import MagicMock
+
+        # Create mock events for standard types
+        events = []
+        for event_type in ["message_start", "content_block_delta", "message_stop"]:
+            mock_event = MagicMock()
+            mock_event.type = event_type
+            mock_event.model_dump = MagicMock(return_value={"type": event_type, "data": "test"})
+            events.append(mock_event)
+
+        # Create async iterator helper
+        async def async_iter():
+            for event in events:
+                yield event
+
+        mock_stream = AsyncMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = MagicMock(return_value=async_iter())
+
+        with patch("psi_agent.ai.anthropic_messages.client.AsyncAnthropic") as mock_anthropic:
+            mock_instance = AsyncMock()
+            mock_instance.messages.stream = MagicMock(return_value=mock_stream)
+            mock_instance.close = AsyncMock()
+            mock_anthropic.return_value = mock_instance
+
+            async with client:
+                result = await client.messages(
+                    {"messages": [{"role": "user", "content": "Hello"}], "max_tokens": 1024},
+                    stream=True,
+                )
+
+                chunks = []
+                async for chunk in result:
+                    chunks.append(chunk)
+
+                # Should have chunks for message_start, content_block_delta, message_stop
+                # Plus the final message_stop from the generator
+                assert len(chunks) >= 3
+
+    @pytest.mark.asyncio
+    async def test_streaming_text_event_filtered(self, client: AnthropicMessagesClient) -> None:
+        """Test 'text' convenience events are filtered out."""
+        from unittest.mock import MagicMock
+
+        # Create standard event and non-standard 'text' event
+        standard_event = MagicMock()
+        standard_event.type = "content_block_delta"
+        standard_event.model_dump = MagicMock(
+            return_value={"type": "content_block_delta", "delta": {"text": "Hello"}}
+        )
+
+        text_event = MagicMock()
+        text_event.type = "text"
+        text_event.model_dump = MagicMock(
+            return_value={"type": "text", "text": "Hello", "snapshot": "Hello"}
+        )
+
+        events = [standard_event, text_event, standard_event]
+
+        # Create async iterator helper
+        async def async_iter():
+            for event in events:
+                yield event
+
+        mock_stream = AsyncMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = MagicMock(return_value=async_iter())
+
+        with patch("psi_agent.ai.anthropic_messages.client.AsyncAnthropic") as mock_anthropic:
+            mock_instance = AsyncMock()
+            mock_instance.messages.stream = MagicMock(return_value=mock_stream)
+            mock_instance.close = AsyncMock()
+            mock_anthropic.return_value = mock_instance
+
+            async with client:
+                result = await client.messages(
+                    {"messages": [{"role": "user", "content": "Hello"}], "max_tokens": 1024},
+                    stream=True,
+                )
+
+                chunks = []
+                async for chunk in result:
+                    chunks.append(chunk)
+
+                # Should only have chunks for standard events (content_block_delta twice)
+                # The 'text' event should be filtered out
+                for chunk in chunks:
+                    if chunk.startswith("event:"):
+                        assert "event: text" not in chunk
+
+    @pytest.mark.asyncio
+    async def test_streaming_unknown_event_filtered(self, client: AnthropicMessagesClient) -> None:
+        """Test unknown event types are filtered out."""
+        from unittest.mock import MagicMock
+
+        standard_event = MagicMock()
+        standard_event.type = "content_block_delta"
+        standard_event.model_dump = MagicMock(
+            return_value={"type": "content_block_delta", "delta": {"text": "Hello"}}
+        )
+
+        unknown_event = MagicMock()
+        unknown_event.type = "unknown_event_type"
+        unknown_event.model_dump = MagicMock(
+            return_value={"type": "unknown_event_type", "data": "test"}
+        )
+
+        events = [standard_event, unknown_event]
+
+        # Create async iterator helper
+        async def async_iter():
+            for event in events:
+                yield event
+
+        mock_stream = AsyncMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = MagicMock(return_value=async_iter())
+
+        with patch("psi_agent.ai.anthropic_messages.client.AsyncAnthropic") as mock_anthropic:
+            mock_instance = AsyncMock()
+            mock_instance.messages.stream = MagicMock(return_value=mock_stream)
+            mock_instance.close = AsyncMock()
+            mock_anthropic.return_value = mock_instance
+
+            async with client:
+                result = await client.messages(
+                    {"messages": [{"role": "user", "content": "Hello"}], "max_tokens": 1024},
+                    stream=True,
+                )
+
+                chunks = []
+                async for chunk in result:
+                    chunks.append(chunk)
+
+                # Should only have chunks for standard events
+                for chunk in chunks:
+                    if chunk.startswith("event:"):
+                        assert "event: unknown_event_type" not in chunk
