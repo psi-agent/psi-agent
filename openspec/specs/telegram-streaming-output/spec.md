@@ -49,3 +49,12 @@ The Telegram channel SHALL handle streaming messages that exceed Telegram's 4096
 - **WHEN** streaming completes and total content exceeds 4096 characters
 - **THEN** the channel SHALL split the complete content into multiple messages
 - **AND** use existing `split_message()` function for splitting
+
+### Requirement: Telegram streaming output includes typing indicator
+
+The Telegram streaming output feature SHALL include typing indicator feedback during message processing.
+
+#### Scenario: Typing indicator shown during streaming
+- **WHEN** streaming mode is enabled and a user message is received
+- **THEN** the channel SHALL display a typing indicator to the user
+- **AND** the indicator SHALL remain visible until the first message is sent

@@ -8,6 +8,7 @@ from typing import Any
 
 from loguru import logger
 from telegram import Update
+from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from psi_agent.channel.telegram.client import TelegramClient
@@ -228,6 +229,12 @@ class TelegramBot:
         # Send initial message placeholder
         if update.message is None:
             return
+
+        # Send typing indicator before streaming starts
+        try:
+            await update.message.chat.send_action(ChatAction.TYPING)
+        except Exception as e:
+            logger.debug(f"Failed to send typing indicator: {e}")
 
         try:
             sent_message = await update.message.reply_text("...")

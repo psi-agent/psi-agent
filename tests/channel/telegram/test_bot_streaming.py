@@ -584,3 +584,59 @@ class TestTelegramBotStreaming:
         # At least one edit should contain multiple characters (batched)
         has_batched = any(len(edit) > 1 for edit in captured_edits if edit)
         assert has_batched or len(captured_edits) >= 1  # Either batched or final edit
+
+    @pytest.mark.asyncio
+    async def test_streaming_sends_typing_indicator(self, config):
+        """Test streaming handler sends typing indicator before streaming starts."""
+        bot = TelegramBot(config)
+
+        mock_chat = AsyncMock()
+        mock_chat.send_action = AsyncMock()
+
+        mock_message = AsyncMock()
+        mock_message.text = "Hello"
+        mock_message.chat = mock_chat
+        mock_message.reply_text = AsyncMock()
+
+        mock_sent_message = AsyncMock()
+        mock_sent_message.edit_text = AsyncMock()
+        mock_message.reply_text.return_value = mock_sent_message
+
+        mock_update = MagicMock()
+        mock_update.message = mock_message
+        mock_update.effective_user = MagicMock(id=123)
+
+        async def mock_stream(_message: str, _user_id: str, on_chunk) -> str:
+            on_chunk("Test")
+            return "Test"
+
+        with patch.object(bot.client, "send_message_stream", mock_stream):
+            async with bot.client:
+                await bot._handle_message_streaming(mock_update, "telegram:123", "Hello")
+
+        # Typing indicator should be sent
+        mock_chat.send_action.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_non_streaming_does_not_send_typing_indicator(self, config_no_stream):
+        """Test non-streaming handler does not send typing indicator."""
+        bot = TelegramBot(config_no_stream)
+
+        mock_chat = AsyncMock()
+        mock_chat.send_action = AsyncMock()
+
+        mock_message = AsyncMock()
+        mock_message.text = "Hello"
+        mock_message.chat = mock_chat
+        mock_message.reply_text = AsyncMock()
+
+        mock_update = MagicMock()
+        mock_update.message = mock_message
+        mock_update.effective_user = MagicMock(id=123)
+
+        with patch.object(bot.client, "send_message", AsyncMock(return_value="Test response")):
+            async with bot.client:
+                await bot._handle_message_non_streaming(mock_update, "telegram:123", "Hello")
+
+        # Typing indicator should NOT be sent in non-streaming mode
+        mock_chat.send_action.assert_not_called()
