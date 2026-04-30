@@ -509,6 +509,40 @@ async def request(url: str) -> dict[str, Any]:
         return {"error": "Request timeout", "status_code": 500}
 ```
 
+### 防御性编程规范
+
+**外部数据处理原则：**
+
+所有来自外部源（LLM 响应、用户输入、API 响应）的数据字段都可能为 `null` 或缺失。代码必须在操作前验证字段值。
+
+**Null 检查模式：**
+
+```python
+# 正确 ✓ - 使用 dict.get() 检查 null
+if data.get("field") is not None:
+    result += data["field"]
+
+# 正确 ✓ - 字符串切片前检查
+content = delta.get("content")
+if content is not None:
+    logger.debug(f"Content: {content[:100]}...")
+
+# 错误 ✗ - 假设字段非 null
+result += data["field"]  # 可能 TypeError
+
+# 错误 ✗ - "key" in dict 不检查 null 值
+if "field" in data:  # data["field"] 可能是 None
+    result += data["field"]
+```
+
+**适用场景：**
+- Streaming delta 字段处理（content、tool_calls、arguments 等）
+- LLM 响应解析
+- 用户输入验证
+- 外部 API 响应处理
+
+**核心规则：** 在字符串拼接 (`+=`)、切片 (`[:]`)、迭代等操作前，必须确认值非 `None`。
+
 ### 日志规范
 
 - 使用 **loguru** 进行日志记录

@@ -156,7 +156,7 @@ class ReplClient:
                     return "Error: No response from session"
 
                 msg = choices[0].get("message", {})
-                content = msg.get("content", "")
+                content = msg.get("content") or ""
                 logger.debug(f"Received response: {content[:100]}...")
                 return content
 
