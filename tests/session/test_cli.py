@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 from psi_agent.session.cli import Session, main
 from psi_agent.session.config import SessionConfig
 
@@ -51,6 +53,70 @@ class TestSessionCli:
         assert config.ai_socket == "/tmp/ai.sock"
 
 
+class TestSessionCliCall:
+    """Tests for session CLI __call__ method."""
+
+    @patch("psi_agent.session.cli.asyncio.run")
+    @patch("psi_agent.session.cli.SessionServer")
+    @patch("psi_agent.session.cli.SessionConfig")
+    def test_cli_call_creates_config(
+        self,
+        mock_config_cls: MagicMock,
+        mock_server_cls: MagicMock,
+        mock_run: MagicMock,
+    ) -> None:
+        """Test CLI __call__ creates config with correct parameters."""
+        mock_config = MagicMock()
+        mock_config_cls.return_value = mock_config
+        mock_server = MagicMock()
+        mock_server.start = AsyncMock()
+        mock_server.stop = AsyncMock()
+        mock_server_cls.return_value = mock_server
+
+        session = Session(
+            channel_socket="/tmp/channel.sock",
+            ai_socket="/tmp/ai.sock",
+            workspace="/tmp/workspace",
+            history_file="/tmp/history.json",
+            reasoning_effort="high",
+        )
+        session()
+
+        mock_config_cls.assert_called_once_with(
+            channel_socket="/tmp/channel.sock",
+            ai_socket="/tmp/ai.sock",
+            workspace="/tmp/workspace",
+            history_file="/tmp/history.json",
+            reasoning_effort="high",
+        )
+
+    @patch("psi_agent.session.cli.asyncio.run")
+    @patch("psi_agent.session.cli.SessionServer")
+    @patch("psi_agent.session.cli.SessionConfig")
+    def test_cli_call_creates_server(
+        self,
+        mock_config_cls: MagicMock,
+        mock_server_cls: MagicMock,
+        mock_run: MagicMock,
+    ) -> None:
+        """Test CLI __call__ creates server with config."""
+        mock_config = MagicMock()
+        mock_config_cls.return_value = mock_config
+        mock_server = MagicMock()
+        mock_server.start = AsyncMock()
+        mock_server.stop = AsyncMock()
+        mock_server_cls.return_value = mock_server
+
+        session = Session(
+            channel_socket="/tmp/channel.sock",
+            ai_socket="/tmp/ai.sock",
+            workspace="/tmp/workspace",
+        )
+        session()
+
+        mock_server_cls.assert_called_once_with(mock_config)
+
+
 class TestSessionMain:
     """Tests for main function."""
 
@@ -64,6 +130,12 @@ class TestSessionMain:
 
         assert inspect.isfunction(main)
 
+    @patch("psi_agent.session.cli.tyro.cli")
+    def test_main_calls_tyro(self, mock_cli: MagicMock) -> None:
+        """Test main calls tyro.cli."""
+        main()
+        mock_cli.assert_called_once_with(Session)
+
 
 class TestSessionDefaults:
     """Tests for default values."""
@@ -76,6 +148,15 @@ class TestSessionDefaults:
             workspace="/tmp/workspace",
         )
         assert session.history_file is None
+
+    def test_default_reasoning_effort(self) -> None:
+        """Test default reasoning_effort is medium."""
+        session = Session(
+            channel_socket="/tmp/channel.sock",
+            ai_socket="/tmp/ai.sock",
+            workspace="/tmp/workspace",
+        )
+        assert session.reasoning_effort == "medium"
 
 
 class TestSessionPaths:
@@ -102,3 +183,37 @@ class TestSessionPaths:
         assert session.channel_socket == "/var/run/psi/channel.sock"
         assert session.ai_socket == "/var/run/psi/ai.sock"
         assert session.workspace == "/home/user/workspace"
+
+
+class TestSessionReasoningEffort:
+    """Tests for reasoning_effort parameter."""
+
+    def test_reasoning_effort_low(self) -> None:
+        """Test Session with low reasoning effort."""
+        session = Session(
+            channel_socket="/tmp/channel.sock",
+            ai_socket="/tmp/ai.sock",
+            workspace="/tmp/workspace",
+            reasoning_effort="low",
+        )
+        assert session.reasoning_effort == "low"
+
+    def test_reasoning_effort_medium(self) -> None:
+        """Test Session with medium reasoning effort."""
+        session = Session(
+            channel_socket="/tmp/channel.sock",
+            ai_socket="/tmp/ai.sock",
+            workspace="/tmp/workspace",
+            reasoning_effort="medium",
+        )
+        assert session.reasoning_effort == "medium"
+
+    def test_reasoning_effort_high(self) -> None:
+        """Test Session with high reasoning effort."""
+        session = Session(
+            channel_socket="/tmp/channel.sock",
+            ai_socket="/tmp/ai.sock",
+            workspace="/tmp/workspace",
+            reasoning_effort="high",
+        )
+        assert session.reasoning_effort == "high"
