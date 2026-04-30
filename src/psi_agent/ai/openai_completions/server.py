@@ -58,6 +58,12 @@ class OpenAICompletionsServer:
         # Override model with configured model
         body["model"] = self.config.model
 
+        # Inject reasoning parameters if configured
+        if self.config.thinking is not None:
+            body["thinking"] = {"type": self.config.thinking}
+        if self.config.reasoning_effort is not None:
+            body["reasoning_effort"] = self.config.reasoning_effort
+
         stream = body.get("stream", False)
         body_summary = {
             k: v if k != "messages" else f"[{len(v)} messages]" for k, v in body.items()

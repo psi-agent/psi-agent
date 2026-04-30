@@ -21,6 +21,8 @@ class OpenaiCompletions:
     model: str
     api_key: str
     base_url: str = "https://api.openai.com/v1"
+    thinking: str | None = None
+    reasoning_effort: str | None = None
 
     def __call__(self) -> None:
         # Mask sensitive arguments from process title
@@ -31,6 +33,8 @@ class OpenaiCompletions:
             model=self.model,
             api_key=self.api_key,
             base_url=self.base_url,
+            thinking=self.thinking,
+            reasoning_effort=self.reasoning_effort,
         )
 
         logger.info("Starting psi-ai-openai-completions")

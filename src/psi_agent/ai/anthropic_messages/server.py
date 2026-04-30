@@ -59,6 +59,12 @@ class AnthropicMessagesServer:
         # Translate OpenAI format to Anthropic format
         anthropic_body = translate_openai_to_anthropic(body, max_tokens=self.config.max_tokens)
 
+        # Inject reasoning parameters if configured
+        if self.config.thinking is not None:
+            anthropic_body["thinking"] = {"type": self.config.thinking}
+        if self.config.reasoning_effort is not None:
+            anthropic_body["output_config"] = {"effort": self.config.reasoning_effort}
+
         stream = anthropic_body.get("stream", False)
         body_summary = {
             k: v if k != "messages" else f"[{len(v)} messages]" for k, v in anthropic_body.items()

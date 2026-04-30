@@ -256,8 +256,6 @@ class SessionRunner:
         request_body = {
             "model": "session",  # Model is determined by psi-ai
             "messages": messages,
-            "thinking": {"type": "enabled"},
-            "reasoning_effort": self.config.reasoning_effort,
         }
 
         async with self.client.post(
@@ -360,8 +358,6 @@ class SessionRunner:
                 "messages": current_messages,
                 "tools": self.registry.list_tools(),
                 "stream": True,
-                "thinking": {"type": "enabled"},
-                "reasoning_effort": self.config.reasoning_effort,
             }
             logger.debug(
                 f"AI request body: {json.dumps(request_body, ensure_ascii=False, indent=2)}"
@@ -534,8 +530,6 @@ class SessionRunner:
                 "messages": current_messages,
                 "tools": self.registry.list_tools(),
                 "stream": True,
-                "thinking": {"type": "enabled"},
-                "reasoning_effort": self.config.reasoning_effort,
             }
 
             # Call psi-ai with streaming

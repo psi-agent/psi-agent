@@ -20,7 +20,6 @@ class Session:
     ai_socket: str
     workspace: str
     history_file: str | None = None
-    reasoning_effort: str = "medium"
 
     def __call__(self) -> None:
         config = SessionConfig(
@@ -28,7 +27,6 @@ class Session:
             ai_socket=self.ai_socket,
             workspace=self.workspace,
             history_file=self.history_file,
-            reasoning_effort=self.reasoning_effort,
         )
 
         logger.info("Starting psi-session")

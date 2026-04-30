@@ -16,14 +16,12 @@ class SessionConfig:
         ai_socket: Path to the Unix socket for communication with psi-ai.
         workspace: Path to the workspace directory containing tools/skills/systems.
         history_file: Optional path to JSON file for history persistence.
-        reasoning_effort: Reasoning effort level for LLM requests (low, medium, high).
     """
 
     channel_socket: str
     ai_socket: str
     workspace: str
     history_file: str | None = None
-    reasoning_effort: str = "medium"
 
     def channel_socket_path(self) -> anyio.Path:
         """Get channel socket path as Path object."""
