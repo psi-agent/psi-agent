@@ -30,6 +30,9 @@ dev = [
     "ty>=0.0.33",
 ]
 
+[project.optional-dependencies]
+socks = ["socksio>=1.0.0"]
+
 [project.scripts]
 psi-agent = "psi_agent.__main__:main"
 psi-ai-anthropic-messages = "psi_agent.ai.anthropic_messages.cli:main"

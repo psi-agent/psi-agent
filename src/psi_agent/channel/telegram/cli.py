@@ -21,7 +21,9 @@ class Telegram:
         token: Telegram bot token.
         session_socket: Path to the Unix socket for communication with psi-session.
         proxy: Optional proxy URL for connecting to Telegram API. Supports socks5://,
-            http://, and https:// formats. Defaults to None (direct connection).
+            http://, and https:// formats. For SOCKS5 proxies, you must install the
+            'socks' extra dependency: `pip install 'psi-agent[socks]'` or `uv sync --extra socks`.
+            Defaults to None (direct connection).
         stream: Enable streaming mode (default: streaming enabled).
         stream_interval: Minimum time interval (in seconds) between message edits
             when streaming. Defaults to 1.0.

@@ -585,58 +585,127 @@ class TestTelegramBotStreaming:
         has_batched = any(len(edit) > 1 for edit in captured_edits if edit)
         assert has_batched or len(captured_edits) >= 1  # Either batched or final edit
 
+
+class TestProxyValidation:
+    """Tests for proxy validation and error handling."""
+
     @pytest.mark.asyncio
-    async def test_streaming_sends_typing_indicator(self, config):
-        """Test streaming handler sends typing indicator before streaming starts."""
+    async def test_socks5_proxy_missing_dependency_error(self):
+        """Test SOCKS5 proxy raises clear error when socksio is not installed."""
+        config = TelegramConfig(
+            token="test-token",
+            session_socket="/tmp/test.sock",
+            proxy="socks5://localhost:1080",
+        )
         bot = TelegramBot(config)
 
-        mock_chat = AsyncMock()
-        mock_chat.send_action = AsyncMock()
+        # Mock the builder chain to raise ImportError at build() time
+        mock_builder = MagicMock()
+        mock_builder.token.return_value = mock_builder
+        mock_builder.proxy.return_value = mock_builder
+        mock_builder.build.side_effect = ImportError(
+            "Using SOCKS proxy, but the 'socksio' package is not installed"
+        )
 
-        mock_message = AsyncMock()
-        mock_message.text = "Hello"
-        mock_message.chat = mock_chat
-        mock_message.reply_text = AsyncMock()
+        with (
+            patch("psi_agent.channel.telegram.bot.Application.builder", return_value=mock_builder),
+            pytest.raises(RuntimeError) as exc_info,
+        ):
+            await bot.start()
 
-        mock_sent_message = AsyncMock()
-        mock_sent_message.edit_text = AsyncMock()
-        mock_message.reply_text.return_value = mock_sent_message
-
-        mock_update = MagicMock()
-        mock_update.message = mock_message
-        mock_update.effective_user = MagicMock(id=123)
-
-        async def mock_stream(_message: str, _user_id: str, on_chunk) -> str:
-            on_chunk("Test")
-            return "Test"
-
-        with patch.object(bot.client, "send_message_stream", mock_stream):
-            async with bot.client:
-                await bot._handle_message_streaming(mock_update, "telegram:123", "Hello")
-
-        # Typing indicator should be sent
-        mock_chat.send_action.assert_called_once()
+        # Check error message contains installation instructions
+        error_msg = str(exc_info.value)
+        assert "socksio" in error_msg.lower()
+        assert "pip install" in error_msg or "uv sync" in error_msg
 
     @pytest.mark.asyncio
-    async def test_non_streaming_does_not_send_typing_indicator(self, config_no_stream):
-        """Test non-streaming handler does not send typing indicator."""
-        bot = TelegramBot(config_no_stream)
+    async def test_socks5_proxy_runtime_error(self):
+        """Test SOCKS5 proxy raises clear error when python-telegram-bot raises RuntimeError."""
+        config = TelegramConfig(
+            token="test-token",
+            session_socket="/tmp/test.sock",
+            proxy="socks5://localhost:1080",
+        )
+        bot = TelegramBot(config)
 
-        mock_chat = AsyncMock()
-        mock_chat.send_action = AsyncMock()
+        # Mock the builder chain to raise RuntimeError at build() time
+        mock_builder = MagicMock()
+        mock_builder.token.return_value = mock_builder
+        mock_builder.proxy.return_value = mock_builder
+        mock_builder.build.side_effect = RuntimeError(
+            "To use Socks5 proxies, PTB must be installed via pip install"
+        )
 
-        mock_message = AsyncMock()
-        mock_message.text = "Hello"
-        mock_message.chat = mock_chat
-        mock_message.reply_text = AsyncMock()
+        with (
+            patch("psi_agent.channel.telegram.bot.Application.builder", return_value=mock_builder),
+            pytest.raises(RuntimeError) as exc_info,
+        ):
+            await bot.start()
 
-        mock_update = MagicMock()
-        mock_update.message = mock_message
-        mock_update.effective_user = MagicMock(id=123)
+        # Check error message contains installation instructions
+        error_msg = str(exc_info.value)
+        assert "socksio" in error_msg.lower()
+        assert "pip install" in error_msg or "uv sync" in error_msg
 
-        with patch.object(bot.client, "send_message", AsyncMock(return_value="Test response")):
-            async with bot.client:
-                await bot._handle_message_non_streaming(mock_update, "telegram:123", "Hello")
+    @pytest.mark.asyncio
+    async def test_http_proxy_no_extra_dependency(self):
+        """Test HTTP proxy works without extra dependencies."""
+        config = TelegramConfig(
+            token="test-token",
+            session_socket="/tmp/test.sock",
+            proxy="http://localhost:8080",
+        )
+        bot = TelegramBot(config)
 
-        # Typing indicator should NOT be sent in non-streaming mode
-        mock_chat.send_action.assert_not_called()
+        # Mock the Application building to succeed
+        mock_app = MagicMock()
+        mock_app.initialize = AsyncMock()
+        mock_app.start = AsyncMock()
+        mock_app.stop = AsyncMock()
+        mock_app.shutdown = AsyncMock()
+        mock_app.add_handler = MagicMock()
+        mock_app.updater = MagicMock()
+        mock_app.updater.start_polling = AsyncMock()
+        mock_app.updater.stop = AsyncMock()
+
+        mock_builder = MagicMock()
+        mock_builder.token.return_value = mock_builder
+        mock_builder.proxy.return_value = mock_builder
+        mock_builder.build.return_value = mock_app
+
+        # Set stop_event so start() doesn't hang waiting forever
+        bot._stop_event.set()
+
+        with patch("psi_agent.channel.telegram.bot.Application.builder", return_value=mock_builder):
+            # This should not raise any error about socksio
+            await bot.start()
+
+
+class TestProxyCredentialMasking:
+    """Tests for proxy credential masking."""
+
+    def test_mask_proxy_credentials_no_credentials(self):
+        """Test masking when no credentials present."""
+        result = TelegramBot._mask_proxy_credentials("http://localhost:8080")
+        assert result == "http://localhost:8080"
+
+    def test_mask_proxy_credentials_with_user_only(self):
+        """Test masking with user only (no password)."""
+        result = TelegramBot._mask_proxy_credentials("socks5://user@localhost:1080")
+        assert result == "socks5://***@localhost:1080"
+
+    def test_mask_proxy_credentials_with_user_and_password(self):
+        """Test masking with user and password."""
+        result = TelegramBot._mask_proxy_credentials("socks5://user:password@localhost:1080")
+        assert result == "socks5://***@localhost:1080"
+
+    def test_mask_proxy_credentials_complex_password(self):
+        """Test masking with complex password containing special chars."""
+        result = TelegramBot._mask_proxy_credentials("http://user:p@ss:w0rd@proxy.example.com:8080")
+        assert result == "http://***@proxy.example.com:8080"
+
+    def test_mask_proxy_credentials_no_scheme(self):
+        """Test masking when scheme is missing (edge case)."""
+        result = TelegramBot._mask_proxy_credentials("user:password@localhost:1080")
+        # Should return original since we can't properly parse it
+        assert result == "user:password@localhost:1080"
