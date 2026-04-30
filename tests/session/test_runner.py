@@ -907,3 +907,75 @@ async def tool(message: str) -> str:
                 full_content = "".join(chunks)
                 assert "<thinking>" in full_content
                 assert "[Tool: echo]" in full_content
+
+    @pytest.mark.asyncio
+    async def test_stream_conversation_handles_null_content(self, config):
+        """Test _stream_conversation handles null content in delta."""
+        runner = SessionRunner(config)
+        async with runner:
+            # Response with null content (as observed from Tencent hy3 model)
+            # This happens when tool_calls are present but no text content
+            sse_lines = [
+                (
+                    b'data: {"choices":[{"delta":{"content":null,"tool_calls":'
+                    b'[{"index":0,"id":"call_1","function":{"name":"bash","arguments":""}}]}}]}\n'
+                ),
+                (
+                    b'data: {"choices":[{"delta":{"content":null,"tool_calls":'
+                    b'[{"index":0,"function":{"arguments":"{\\"com"}}]}}]}\n'
+                ),
+                b"data: [DONE]\n",
+            ]
+
+            async def async_iter():
+                for line in sse_lines:
+                    yield line
+
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.content = async_iter()
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=None)
+
+            with patch.object(runner.client, "post", return_value=mock_response):
+                messages = [{"role": "user", "content": "Hi"}]
+                chunks = []
+                # This should not crash with TypeError
+                async for chunk in runner._stream_conversation(messages):
+                    chunks.append(chunk)
+
+                # Should complete without error
+                assert len(chunks) >= 0
+
+    @pytest.mark.asyncio
+    async def test_stream_conversation_handles_empty_string_content(self, config):
+        """Test _stream_conversation handles empty string content in delta."""
+        runner = SessionRunner(config)
+        async with runner:
+            # Response with empty string content
+            sse_lines = [
+                b'data: {"choices":[{"delta":{"content":""}}]}\n',
+                b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+                b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+                b"data: [DONE]\n",
+            ]
+
+            async def async_iter():
+                for line in sse_lines:
+                    yield line
+
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.content = async_iter()
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=None)
+
+            with patch.object(runner.client, "post", return_value=mock_response):
+                messages = [{"role": "user", "content": "Hi"}]
+                chunks = []
+                async for chunk in runner._stream_conversation(messages):
+                    chunks.append(chunk)
+
+                # Should not crash and should yield content
+                full_content = "".join(chunks)
+                assert "Hello" in full_content

@@ -385,7 +385,7 @@ class SessionRunner:
                             chunk = json.loads(line_str[6:])
                             delta = chunk.get("choices", [{}])[0].get("delta", {})
 
-                            if "content" in delta:
+                            if "content" in delta and delta["content"] is not None:
                                 content_chunks.append(delta["content"])
                                 logger.debug(f"Stream content chunk: {delta['content'][:100]}...")
 
@@ -554,7 +554,7 @@ class SessionRunner:
                             chunk = json.loads(line_str[6:])
                             delta = chunk.get("choices", [{}])[0].get("delta", {})
 
-                            if "content" in delta:
+                            if "content" in delta and delta["content"] is not None:
                                 content_chunks.append(delta["content"])
                                 logger.debug(f"Stream content chunk: {delta['content'][:100]}...")
 
