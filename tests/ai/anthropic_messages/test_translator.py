@@ -476,3 +476,205 @@ class TestReasoningEffortTranslation:
 
         assert result["thinking"] == {"type": "enabled"}
         assert result["output_config"] == {"effort": "medium"}
+
+
+class TestStreamingToolCalls:
+    """Tests for streaming tool call translation."""
+
+    def test_content_block_start_tool_use(self) -> None:
+        """Test content_block_start with tool_use type produces tool_calls chunk."""
+        translator = StreamingTranslator()
+        translator._message_id = "msg_123"
+        translator._model = "claude-3"
+
+        result = translator.translate_event(
+            "content_block_start",
+            {
+                "index": 0,
+                "content_block": {
+                    "type": "tool_use",
+                    "id": "toolu_123",
+                    "name": "bash",
+                    "input": {},
+                },
+            },
+        )
+
+        assert result is not None
+        assert '"tool_calls"' in result
+        assert '"toolu_123"' in result
+        assert '"bash"' in result
+        # Verify pending tool call is tracked
+        assert 0 in translator._pending_tool_calls
+        assert translator._pending_tool_calls[0]["id"] == "toolu_123"
+
+    def test_content_block_start_text_returns_none(self) -> None:
+        """Test content_block_start with text type returns None."""
+        translator = StreamingTranslator()
+        translator._message_id = "msg_123"
+        translator._model = "claude-3"
+
+        result = translator.translate_event(
+            "content_block_start",
+            {
+                "index": 0,
+                "content_block": {
+                    "type": "text",
+                    "text": "",
+                },
+            },
+        )
+
+        assert result is None
+
+    def test_content_block_delta_input_json_delta(self) -> None:
+        """Test content_block_delta with input_json_delta produces tool_calls chunk."""
+        translator = StreamingTranslator()
+        translator._message_id = "msg_123"
+        translator._model = "claude-3"
+        # Set up pending tool call
+        translator._pending_tool_calls[0] = {"id": "toolu_123", "name": "bash"}
+
+        result = translator.translate_event(
+            "content_block_delta",
+            {
+                "index": 0,
+                "delta": {
+                    "type": "input_json_delta",
+                    "partial_json": '{"command": "hostname"',
+                },
+            },
+        )
+
+        assert result is not None
+        assert '"tool_calls"' in result
+        assert '"arguments"' in result
+        # Check that the partial_json is in the result (escaped in JSON)
+        assert "hostname" in result
+
+    def test_content_block_delta_input_json_delta_no_pending_tool(self) -> None:
+        """Test input_json_delta without pending tool call returns None."""
+        translator = StreamingTranslator()
+        translator._message_id = "msg_123"
+        translator._model = "claude-3"
+
+        result = translator.translate_event(
+            "content_block_delta",
+            {
+                "index": 0,
+                "delta": {
+                    "type": "input_json_delta",
+                    "partial_json": '{"command": "hostname"',
+                },
+            },
+        )
+
+        assert result is None
+
+    def test_content_block_delta_text_still_works(self) -> None:
+        """Test content_block_delta with text still produces content chunk."""
+        translator = StreamingTranslator()
+        translator._message_id = "msg_123"
+        translator._model = "claude-3"
+
+        result = translator.translate_event(
+            "content_block_delta",
+            {
+                "index": 0,
+                "delta": {
+                    "type": "text_delta",
+                    "text": "Hello",
+                },
+            },
+        )
+
+        assert result is not None
+        assert '"content": "Hello"' in result
+        assert '"tool_calls"' not in result
+
+    def test_content_block_stop_clears_pending_tool(self) -> None:
+        """Test content_block_stop clears pending tool call."""
+        translator = StreamingTranslator()
+        translator._pending_tool_calls[0] = {"id": "toolu_123", "name": "bash"}
+
+        result = translator.translate_event(
+            "content_block_stop",
+            {"index": 0},
+        )
+
+        assert result is None
+        assert 0 not in translator._pending_tool_calls
+
+    def test_message_delta_tool_use_finish_reason(self) -> None:
+        """Test message_delta with tool_use stop_reason produces tool_calls finish."""
+        translator = StreamingTranslator()
+        translator._message_id = "msg_123"
+        translator._model = "claude-3"
+
+        result = translator.translate_event(
+            "message_delta",
+            {"delta": {"stop_reason": "tool_use"}},
+        )
+
+        assert result is not None
+        assert '"finish_reason": "tool_calls"' in result
+
+
+class TestTranslateAnthropicStreamToolCalls:
+    """Tests for async stream translation with tool calls."""
+
+    async def test_stream_tool_call_translation(self) -> None:
+        """Test full stream translation with tool calls."""
+        import json
+
+        async def mock_stream() -> AsyncGenerator[str]:
+            # message_start event
+            msg_start = json.dumps({"message": {"id": "msg_123", "model": "claude-3"}})
+            yield f"event: message_start\ndata: {msg_start}\n\n"
+            # content_block_start for tool_use
+            tool_start = json.dumps(
+                {
+                    "index": 0,
+                    "content_block": {
+                        "type": "tool_use",
+                        "id": "toolu_123",
+                        "name": "bash",
+                        "input": {},
+                    },
+                }
+            )
+            yield f"event: content_block_start\ndata: {tool_start}\n\n"
+            # content_block_delta with input_json_delta
+            tool_delta = json.dumps(
+                {
+                    "index": 0,
+                    "delta": {
+                        "type": "input_json_delta",
+                        "partial_json": '{"command": "hostname"}',
+                    },
+                }
+            )
+            yield f"event: content_block_delta\ndata: {tool_delta}\n\n"
+            # content_block_stop
+            yield 'event: content_block_stop\ndata: {"index": 0}\n\n'
+            # message_delta with tool_use stop_reason
+            msg_delta = json.dumps({"delta": {"stop_reason": "tool_use"}})
+            yield f"event: message_delta\ndata: {msg_delta}\n\n"
+            # message_stop event
+            yield "event: message_stop\ndata: {}\n\n"
+
+        chunks = []
+        async for chunk in translate_anthropic_stream(mock_stream()):
+            chunks.append(chunk)
+
+        # Should have: message_start, tool_use start, input_json_delta, message_delta, message_stop
+        assert len(chunks) == 5
+        # Check tool_calls in second chunk
+        assert '"tool_calls"' in chunks[1]
+        assert '"bash"' in chunks[1]
+        # Check arguments in third chunk
+        assert '"arguments"' in chunks[2]
+        # Check finish reason
+        assert '"finish_reason": "tool_calls"' in chunks[3]
+        # Last chunk is [DONE]
+        assert chunks[4] == "data: [DONE]\n\n"
