@@ -112,7 +112,7 @@ async def test_session_runner_context_exit_closes_client(config):
 async def test_session_runner_loads_tools(config):
     """Test SessionRunner loads tools from workspace."""
     # Create a tool file
-    tools_dir = config.tools_dir()
+    tools_dir = await config.tools_dir()
     tool_file = tools_dir / "test_tool.py"
     await tool_file.write_text(
         """
@@ -327,7 +327,7 @@ class TestRunnerWorkspaceChanges:
         runner = SessionRunner(config)
         async with runner:
             # Create a tool file
-            tools_dir = config.tools_dir()
+            tools_dir = await config.tools_dir()
             tool_file = tools_dir / "new_tool.py"
             await tool_file.write_text("async def tool(x: int) -> int: return x")
 
@@ -495,7 +495,7 @@ async def test_run_conversation_handles_tool_calls_from_stream(config):
     runner = SessionRunner(config)
     async with runner:
         # Create a tool for testing
-        tool_file = config.tools_dir() / "echo.py"
+        tool_file = await config.tools_dir() / "echo.py"
         await tool_file.write_text(
             """
 async def tool(message: str) -> str:
@@ -597,7 +597,7 @@ async def test_run_conversation_includes_thinking(config):
     runner = SessionRunner(config)
     async with runner:
         # Create a tool for testing
-        tool_file = config.tools_dir() / "echo.py"
+        tool_file = await config.tools_dir() / "echo.py"
         await tool_file.write_text(
             """
 async def tool(message: str) -> str:
@@ -731,7 +731,7 @@ class TestStreamConversation:
         runner = SessionRunner(config)
         async with runner:
             # Create a tool
-            tool_file = config.tools_dir() / "echo.py"
+            tool_file = await config.tools_dir() / "echo.py"
             await tool_file.write_text(
                 """
 async def tool(message: str) -> str:
@@ -873,7 +873,7 @@ async def tool(message: str) -> str:
         runner = SessionRunner(config)
         async with runner:
             # Create a tool
-            tool_file = config.tools_dir() / "echo.py"
+            tool_file = await config.tools_dir() / "echo.py"
             await tool_file.write_text(
                 """
 async def tool(message: str) -> str:
@@ -1014,3 +1014,117 @@ async def tool(message: str) -> str:
                 # Should not crash and should yield content
                 full_content = "".join(chunks)
                 assert "Hello" in full_content
+
+
+class TestWorkspacePathResolution:
+    """Tests for workspace path resolution in session runner."""
+
+    @pytest.mark.asyncio
+    async def test_runner_caches_resolved_workspace_path(self):
+        """Test that SessionRunner caches the resolved workspace path."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_dir = os.path.join(tmpdir, "workspace")
+            os.makedirs(workspace_dir)
+            tools_dir = os.path.join(workspace_dir, "tools")
+            os.makedirs(tools_dir)
+
+            # Change to temp dir to test relative path resolution
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(tmpdir)
+                config = SessionConfig(
+                    channel_socket="/tmp/channel.sock",
+                    ai_socket="/tmp/ai.sock",
+                    workspace="./workspace",
+                )
+
+                runner = SessionRunner(config)
+                async with runner:
+                    # The cached workspace should be an absolute path
+                    assert runner._workspace is not None
+                    assert runner._workspace.is_absolute()
+                    # Should point to the correct location
+                    expected = anyio.Path(tmpdir) / "workspace"
+                    assert runner._workspace == expected
+            finally:
+                os.chdir(original_cwd)
+
+    @pytest.mark.asyncio
+    async def test_runner_passes_absolute_path_to_workspace_watcher(self):
+        """Test that SessionRunner passes absolute path to WorkspaceWatcher."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace_dir = os.path.join(tmpdir, "workspace")
+            os.makedirs(workspace_dir)
+            tools_dir = os.path.join(workspace_dir, "tools")
+            os.makedirs(tools_dir)
+
+            # Change to temp dir to test relative path resolution
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(tmpdir)
+                config = SessionConfig(
+                    channel_socket="/tmp/channel.sock",
+                    ai_socket="/tmp/ai.sock",
+                    workspace="./workspace",
+                )
+
+                runner = SessionRunner(config)
+                async with runner:
+                    # WorkspaceWatcher should have the absolute path
+                    assert runner._watcher is not None
+                    assert runner._watcher.workspace.is_absolute()
+                    expected = anyio.Path(tmpdir) / "workspace"
+                    assert runner._watcher.workspace == expected
+            finally:
+                os.chdir(original_cwd)
+
+    @pytest.mark.asyncio
+    async def test_system_receives_absolute_workspace_path(self):
+        """Test that System class from workspace receives absolute path."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            workspace = anyio.Path(tmpdir)
+            systems_dir = workspace / "systems"
+            await systems_dir.mkdir()
+
+            # Create a system.py that stores the workspace path
+            system_file = systems_dir / "system.py"
+            await system_file.write_text(
+                """
+from __future__ import annotations
+
+import anyio
+
+class System:
+    def __init__(self, workspace_dir: anyio.Path) -> None:
+        self._workspace_dir = workspace_dir
+        self.received_path = workspace_dir
+
+    async def build_system_prompt(self) -> str:
+        return f"Workspace: {self._workspace_dir}"
+
+    async def compact_history(self, history, complete_fn, max_tokens=4000):
+        return history
+"""
+            )
+
+            # Change to temp dir to test relative path resolution
+            original_cwd = os.getcwd()
+            try:
+                os.chdir(tmpdir)
+                config = SessionConfig(
+                    channel_socket="/tmp/channel.sock",
+                    ai_socket="/tmp/ai.sock",
+                    workspace=".",
+                )
+
+                runner = SessionRunner(config)
+                async with runner:
+                    # System should have received an absolute path
+                    assert runner._system is not None
+                    received_path = runner._system.received_path
+                    assert received_path.is_absolute()
+                    # Should point to the correct location
+                    expected = await anyio.Path(tmpdir).resolve()
+                    assert received_path == expected
+            finally:
+                os.chdir(original_cwd)

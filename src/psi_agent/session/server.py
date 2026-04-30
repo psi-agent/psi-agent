@@ -198,8 +198,9 @@ class SessionServer:
         self.runner = SessionRunner(self.config)
         await self.runner.__aenter__()
 
-        # Load and start schedules
-        schedules = await load_schedules(self.config.workspace_path())
+        # Load and start schedules using the resolved workspace path
+        workspace = await self.config.workspace_path()
+        schedules = await load_schedules(workspace)
         if schedules:
             self._schedule_executor = ScheduleExecutor(schedules, self.runner)
             # Connect runner to executor for hot-reload
@@ -214,7 +215,7 @@ class SessionServer:
         await site.start()
 
         logger.info(f"Session server started on Unix socket: {socket_path}")
-        logger.info(f"Workspace: {self.config.workspace}")
+        logger.info(f"Workspace: {workspace}")
         if self.config.history_file:
             logger.info(f"History file: {self.config.history_file}")
 

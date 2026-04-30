@@ -148,23 +148,27 @@ class SessionRunner:
         self._watcher: WorkspaceWatcher | None = None
         self._schedule_executor: ScheduleExecutor | None = None
         self._system: Any = None  # System instance from workspace
+        self._workspace: anyio.Path | None = None  # Cached resolved workspace path
 
     async def __aenter__(self) -> SessionRunner:
         """Initialize session resources."""
+        # Resolve and cache workspace path
+        self._workspace = await self.config.workspace_path()
+
         # Initialize history
         self.history = await initialize_history(self.config.history_file)
 
-        # Initialize workspace watcher
-        self._watcher = WorkspaceWatcher(self.config.workspace_path())
+        # Initialize workspace watcher with resolved absolute path
+        self._watcher = WorkspaceWatcher(self._workspace)
         await self._watcher.initialize()
 
         # Load tools
-        tools_dir = self.config.tools_dir()
+        tools_dir = await self.config.tools_dir()
         await load_all_tools(tools_dir, self.registry)
         logger.info(f"Loaded {len(self.registry.tools)} tools")
 
-        # Load System instance
-        self._system = await _load_system(self.config.workspace_path())
+        # Load System instance with resolved absolute path
+        self._system = await _load_system(self._workspace)
 
         # Load system prompt
         if self._system is not None:
@@ -202,7 +206,8 @@ class SessionRunner:
         """
         # Handle tool changes
         if changes.tools_changed:
-            await detect_and_update_tools(self.config.tools_dir(), self.registry)
+            tools_dir = await self.config.tools_dir()
+            await detect_and_update_tools(tools_dir, self.registry)
 
         # Handle skill/schedule changes - rebuild system prompt
         if changes.skills_changed or changes.schedules_changed:
@@ -214,7 +219,8 @@ class SessionRunner:
 
         # Handle schedule changes
         if changes.schedules_changed and self._schedule_executor is not None:
-            workspace = self.config.workspace_path()
+            # Use cached resolved workspace path
+            workspace = self._workspace or await self.config.workspace_path()
             schedules_dir = workspace / "schedules"
 
             # Load new/modified schedules

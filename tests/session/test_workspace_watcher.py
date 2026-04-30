@@ -341,3 +341,31 @@ class TestWorkspaceWatcher:
         changes = await watcher.check_for_changes()
 
         assert not changes.has_changes
+
+    @pytest.mark.asyncio
+    async def test_works_with_absolute_path_from_relative_input(self, tmp_path) -> None:
+        """Test that WorkspaceWatcher works correctly when initialized with absolute path
+        resolved from a relative input."""
+        import os
+
+        workspace_dir = anyio.Path(tmp_path)
+        tools_dir = workspace_dir / "tools"
+        await tools_dir.mkdir()
+        await (tools_dir / "read.py").write_text("async def tool(): pass")
+
+        # Change to the temp directory and use a relative path
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(str(tmp_path))
+            # Simulate the resolution that SessionConfig.workspace_path() does
+            resolved_workspace = anyio.Path(await anyio.Path(".").resolve())
+
+            # Create watcher with the resolved absolute path
+            watcher = WorkspaceWatcher(resolved_workspace)
+            await watcher.initialize()
+
+            # Should still find the tools
+            assert len(watcher.get_tool_hashes()) == 1
+            assert "read" in watcher.get_tool_hashes()
+        finally:
+            os.chdir(original_cwd)
