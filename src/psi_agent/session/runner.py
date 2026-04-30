@@ -562,10 +562,28 @@ class SessionRunner:
                             chunk = json.loads(line_str[6:])
                             delta = chunk.get("choices", [{}])[0].get("delta", {})
 
+                            # Stream reasoning field directly if present
+                            reasoning = delta.get("reasoning")
+                            if reasoning:
+                                logger.debug(f"Stream reasoning chunk: {reasoning}")
+                                reasoning_data = {
+                                    "choices": [
+                                        {"delta": {"reasoning": reasoning}, "finish_reason": None}
+                                    ]
+                                }
+                                yield f"data: {json.dumps(reasoning_data)}\n\n"
+
+                            # Stream content field directly if present
                             content = delta.get("content")
                             if content is not None:
                                 content_chunks.append(content)
                                 logger.debug(f"Stream content chunk: {content}")
+                                content_data = {
+                                    "choices": [
+                                        {"delta": {"content": content}, "finish_reason": None}
+                                    ]
+                                }
+                                yield f"data: {json.dumps(content_data)}\n\n"
 
                             tool_calls = delta.get("tool_calls")
                             if tool_calls is not None:
@@ -595,7 +613,7 @@ class SessionRunner:
                 # Execute tools
                 tool_messages = await execute_tools_parallel(self.registry, tool_calls)
 
-                # Yield thinking blocks for each tool call immediately
+                # Yield tool call information as reasoning field
                 for i, tool_call in enumerate(tool_calls):
                     tool_name = tool_call.get("function", {}).get("name", "unknown")
                     arguments = tool_call.get("function", {}).get("arguments", "{}")
@@ -603,14 +621,18 @@ class SessionRunner:
                         tool_result = tool_messages[i].get("content", "")
                     else:
                         tool_result = ""
-                    thinking_block = format_tool_call_thinking(tool_name, arguments, tool_result)
 
-                    # Yield thinking block as SSE event
-                    thinking_data = {
-                        "choices": [{"delta": {"content": thinking_block}, "finish_reason": None}]
+                    # Format tool call info without thinking tags
+                    tool_info = (
+                        f"[Tool: {tool_name}]\nArguments: {arguments}\nResult: {tool_result}"
+                    )
+                    logger.debug(f"Stream tool call reasoning: {tool_info}")
+
+                    # Yield as reasoning field
+                    reasoning_data = {
+                        "choices": [{"delta": {"reasoning": tool_info}, "finish_reason": None}]
                     }
-                    data = json.dumps(thinking_data)
-                    yield f"data: {data}\n\n"
+                    yield f"data: {json.dumps(reasoning_data)}\n\n"
 
                 # Add tool results to history and current messages
                 for tool_msg in tool_messages:
@@ -626,13 +648,7 @@ class SessionRunner:
             self.history.add_message({"role": "assistant", "content": final_content})
             await persist_history(self.history)
 
-            # Yield final content
-            for chunk in content_chunks:
-                chunk_data = {"choices": [{"delta": {"content": chunk}, "finish_reason": None}]}
-                data = json.dumps(chunk_data)
-                yield f"data: {data}\n\n"
-
-            # Send done marker
+            # Yield final content (already yielded during streaming, just send done)
             yield "data: [DONE]\n\n"
             return
 
