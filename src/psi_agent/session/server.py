@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncGenerator
-from typing import Any, cast
+from typing import Any
 
 import anyio
 from aiohttp import web
@@ -136,16 +135,9 @@ class SessionServer:
 
         stream_gen = await self.runner.process_streaming_request(user_message)
 
-        # Handle both async generator and dict response
-        if hasattr(stream_gen, "__aiter__"):
-            async for chunk in cast(AsyncGenerator[str], stream_gen):
-                await response.write(chunk.encode())
-        else:
-            # Non-streaming result (tool calls were involved)
-            result = cast(dict[str, Any], stream_gen)
-            channel_response = self._filter_for_channel(result)
-            data = json.dumps(channel_response)
-            await response.write(f"data: {data}\n\n".encode())
+        # Stream all chunks including thinking blocks
+        async for chunk in stream_gen:
+            await response.write(chunk.encode())
 
         logger.info("Streaming response completed")
         return response

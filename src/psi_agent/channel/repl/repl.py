@@ -39,7 +39,7 @@ class Repl:
     async def run(self) -> None:
         """Run the REPL loop."""
         print("psi-channel-repl - Interactive conversation with psi-session")
-        print("Type /quit or press Ctrl+D to exit")
+        print("Press Ctrl+D or Ctrl+C to exit")
         print("Press Alt+Enter or Escape+Enter for new line\n")
 
         # Initialize prompt-toolkit session with file-based history
@@ -57,27 +57,47 @@ class Repl:
                         print("\nGoodbye!")
                         break
 
-                    # Check for quit command
-                    if user_input.strip().lower() == "/quit":
-                        print("Goodbye!")
-                        break
-
                     # Skip empty input
                     if not user_input.strip():
                         continue
 
                     # Send to session and get response
-                    response = await self.client.send_message(user_input)
-
-                    # Display response
-                    print(f"\n{response}\n")
+                    if self.config.stream:
+                        await self._send_and_display_streaming(user_input)
+                    else:
+                        await self._send_and_display_non_streaming(user_input)
 
                 except KeyboardInterrupt:
-                    print("\n\nInterrupted. Type /quit or press Ctrl+D to exit.\n")
-                    continue
+                    # Ctrl+C exits
+                    print("\nGoodbye!")
+                    break
                 except Exception as e:
                     logger.exception(f"Unexpected error: {e}")
                     print(f"\nError: {e}\n")
+
+    async def _send_and_display_streaming(self, user_input: str) -> None:
+        """Send message with streaming and display in real-time.
+
+        Args:
+            user_input: The user's input message.
+        """
+        print()  # Blank line before response
+
+        def on_chunk(chunk: str) -> None:
+            """Print each chunk as it arrives."""
+            print(chunk, end="", flush=True)
+
+        await self.client.send_message_stream(user_input, on_chunk=on_chunk)
+        print("\n")  # Blank line after response
+
+    async def _send_and_display_non_streaming(self, user_input: str) -> None:
+        """Send message without streaming and display complete response.
+
+        Args:
+            user_input: The user's input message.
+        """
+        response = await self.client.send_message(user_input)
+        print(f"\n{response}\n")
 
     async def _read_input(self) -> str | None:
         """Read input from stdin asynchronously using prompt-toolkit.

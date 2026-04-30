@@ -15,10 +15,12 @@ class ReplConfig:
     Args:
         session_socket: Path to the Unix socket for communication with psi-session.
         history_file: Optional path to the history file. If None, uses default path.
+        stream: Whether to use streaming mode. Default is True.
     """
 
     session_socket: str
     history_file: str | None = None
+    stream: bool = True
 
     def socket_path(self) -> anyio.Path:
         """Get the socket path as a Path object."""
