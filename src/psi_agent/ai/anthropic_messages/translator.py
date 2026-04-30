@@ -140,13 +140,21 @@ class StreamingTranslator:
         """Initialize the streaming translator."""
         self._message_id: str = ""
         self._model: str = ""
+        # Track pending tool calls by index: {index: {"id": str, "name": str}}
+        self._pending_tool_calls: dict[int, dict[str, str]] = {}
 
-    def _make_chunk(self, content: str | None = None, finish_reason: str | None = None) -> str:
+    def _make_chunk(
+        self,
+        content: str | None = None,
+        finish_reason: str | None = None,
+        tool_calls: list[dict[str, Any]] | None = None,
+    ) -> str:
         """Create an OpenAI streaming chunk.
 
         Args:
             content: The content delta, if any.
             finish_reason: The finish reason, if any.
+            tool_calls: Tool calls delta, if any.
 
         Returns:
             SSE formatted chunk string.
@@ -154,6 +162,8 @@ class StreamingTranslator:
         delta: dict[str, Any] = {"role": "assistant"}
         if content is not None:
             delta["content"] = content
+        if tool_calls is not None:
+            delta["tool_calls"] = tool_calls
 
         chunk = {
             "id": self._message_id,
@@ -188,18 +198,54 @@ class StreamingTranslator:
             return self._make_chunk()
 
         if event_type == "content_block_start":
-            # No output needed for content block start
+            # Check if this is a tool_use block
+            content_block = event_data.get("content_block", {})
+            if content_block.get("type") == "tool_use":
+                index = event_data.get("index", 0)
+                tool_id = content_block.get("id", "")
+                tool_name = content_block.get("name", "")
+                self._pending_tool_calls[index] = {"id": tool_id, "name": tool_name}
+                # Emit tool_calls chunk with id and name
+                return self._make_chunk(
+                    tool_calls=[
+                        {
+                            "index": index,
+                            "id": tool_id,
+                            "type": "function",
+                            "function": {"name": tool_name, "arguments": ""},
+                        }
+                    ]
+                )
             return None
 
         if event_type == "content_block_delta":
             delta = event_data.get("delta", {})
-            text = delta.get("text", "")
+            index = event_data.get("index", 0)
+
+            # Handle text delta
+            text = delta.get("text")
             if text:
                 return self._make_chunk(content=text)
+
+            # Handle input_json_delta for tool calls
+            if delta.get("type") == "input_json_delta":
+                partial_json = delta.get("partial_json", "")
+                if partial_json and index in self._pending_tool_calls:
+                    return self._make_chunk(
+                        tool_calls=[
+                            {
+                                "index": index,
+                                "function": {"arguments": partial_json},
+                            }
+                        ]
+                    )
             return None
 
         if event_type == "content_block_stop":
-            # No output needed for content block stop
+            # Clean up pending tool call if any
+            index = event_data.get("index", 0)
+            if index in self._pending_tool_calls:
+                del self._pending_tool_calls[index]
             return None
 
         if event_type == "message_delta":
@@ -211,6 +257,7 @@ class StreamingTranslator:
                     "end_turn": "stop",
                     "max_tokens": "length",
                     "stop_sequence": "stop",
+                    "tool_use": "tool_calls",
                 }
                 finish_reason = finish_reason_map.get(stop_reason, "stop")
                 return self._make_chunk(finish_reason=finish_reason)
