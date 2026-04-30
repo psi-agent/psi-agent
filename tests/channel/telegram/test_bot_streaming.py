@@ -640,7 +640,10 @@ class TestTelegramBotStreaming:
         """Test that flushes occur at approximately the configured interval."""
         interval = 0.2
         config = TelegramConfig(
-            token="test-token", session_socket="/tmp/test.sock", stream=True, stream_interval=interval
+            token="test-token",
+            session_socket="/tmp/test.sock",
+            stream=True,
+            stream_interval=interval,
         )
         bot = TelegramBot(config)
 
