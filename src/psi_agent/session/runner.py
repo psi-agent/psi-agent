@@ -577,7 +577,8 @@ class SessionRunner:
                             content = delta.get("content")
                             if content is not None:
                                 content_chunks.append(content)
-                                logger.debug(f"Stream content chunk: {content}")
+                                if content:  # Only log non-empty content
+                                    logger.debug(f"Stream content chunk: {content}")
                                 content_data = {
                                     "choices": [
                                         {"delta": {"content": content}, "finish_reason": None}
