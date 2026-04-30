@@ -153,9 +153,17 @@ class TelegramClient:
                             choices = chunk.get("choices", [])
                             if choices:
                                 delta = choices[0].get("delta", {})
-                                content = delta.get("content", "")
+
+                                # Log reasoning field if present and non-empty
+                                reasoning = delta.get("reasoning")
+                                if reasoning:
+                                    logger.debug(f"Stream reasoning chunk: {reasoning}")
+
+                                # Log content field if present and non-empty
+                                content = delta.get("content")
                                 if content:
                                     content_chunks.append(content)
+                                    logger.debug(f"Stream content chunk: {content}")
                                     if on_chunk is not None:
                                         on_chunk(content)
                         except json.JSONDecodeError:
