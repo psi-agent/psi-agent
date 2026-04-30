@@ -416,3 +416,61 @@ class TestTranslateAnthropicStream:
 
         assert len(chunks) == 3
         assert '"finish_reason": "stop"' in chunks[1]
+
+
+class TestReasoningEffortTranslation:
+    """Tests for reasoning_effort to thinking.budget_tokens translation."""
+
+    def test_low_reasoning_effort(self) -> None:
+        """Test low reasoning_effort maps to 1024 budget_tokens."""
+        openai_request = {
+            "messages": [{"role": "user", "content": "Hello"}],
+            "reasoning_effort": "low",
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert result["thinking"] == {"budget_tokens": 1024}
+
+    def test_medium_reasoning_effort(self) -> None:
+        """Test medium reasoning_effort maps to 4096 budget_tokens."""
+        openai_request = {
+            "messages": [{"role": "user", "content": "Hello"}],
+            "reasoning_effort": "medium",
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert result["thinking"] == {"budget_tokens": 4096}
+
+    def test_high_reasoning_effort(self) -> None:
+        """Test high reasoning_effort maps to 16384 budget_tokens."""
+        openai_request = {
+            "messages": [{"role": "user", "content": "Hello"}],
+            "reasoning_effort": "high",
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert result["thinking"] == {"budget_tokens": 16384}
+
+    def test_no_reasoning_effort(self) -> None:
+        """Test no thinking parameter when reasoning_effort is absent."""
+        openai_request = {
+            "messages": [{"role": "user", "content": "Hello"}],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert "thinking" not in result
+
+    def test_invalid_reasoning_effort_ignored(self) -> None:
+        """Test invalid reasoning_effort value is ignored."""
+        openai_request = {
+            "messages": [{"role": "user", "content": "Hello"}],
+            "reasoning_effort": "invalid",
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert "thinking" not in result

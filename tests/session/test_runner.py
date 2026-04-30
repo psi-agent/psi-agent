@@ -1014,3 +1014,153 @@ async def tool(message: str) -> str:
                 # Should not crash and should yield content
                 full_content = "".join(chunks)
                 assert "Hello" in full_content
+
+
+class TestReasoningEffort:
+    """Tests for reasoning_effort parameter in session requests."""
+
+    @pytest.fixture
+    def config_with_reasoning(self):
+        """Create test config with custom reasoning_effort."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tools_dir = os.path.join(tmpdir, "tools")
+            os.makedirs(tools_dir)
+
+            yield SessionConfig(
+                channel_socket=os.path.join(tmpdir, "channel.sock"),
+                ai_socket=os.path.join(tmpdir, "ai.sock"),
+                workspace=tmpdir,
+                history_file=None,
+                reasoning_effort="high",
+            )
+
+    @pytest.mark.asyncio
+    async def test_run_conversation_includes_reasoning_effort(self, config_with_reasoning):
+        """Test _run_conversation includes reasoning_effort in request body."""
+        runner = SessionRunner(config_with_reasoning)
+        async with runner:
+            # Create streaming response mock
+            sse_lines = [
+                b'data: {"choices":[{"delta":{"content":"Response"}}]}\n',
+                b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+                b"data: [DONE]\n",
+            ]
+
+            async def async_iter():
+                for line in sse_lines:
+                    yield line
+
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.content = async_iter()
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=None)
+
+            captured_body = {}
+
+            def capture_post(url, json=None, **kwargs):
+                captured_body.update(json or {})
+                return mock_response
+
+            with patch.object(runner.client, "post", side_effect=capture_post):
+                messages = [{"role": "user", "content": "Test"}]
+                await runner._run_conversation(messages)
+
+            # Check reasoning_effort was included
+            assert captured_body.get("reasoning_effort") == "high"
+
+    @pytest.mark.asyncio
+    async def test_stream_conversation_includes_reasoning_effort(self, config_with_reasoning):
+        """Test _stream_conversation includes reasoning_effort in request body."""
+        runner = SessionRunner(config_with_reasoning)
+        async with runner:
+            # Create streaming response mock
+            sse_lines = [
+                b'data: {"choices":[{"delta":{"content":"Response"}}]}\n',
+                b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+                b"data: [DONE]\n",
+            ]
+
+            async def async_iter():
+                for line in sse_lines:
+                    yield line
+
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.content = async_iter()
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=None)
+
+            captured_body = {}
+
+            def capture_post(url, json=None, **kwargs):
+                captured_body.update(json or {})
+                return mock_response
+
+            with patch.object(runner.client, "post", side_effect=capture_post):
+                messages = [{"role": "user", "content": "Test"}]
+                async for _chunk in runner._stream_conversation(messages):
+                    pass
+
+            # Check reasoning_effort was included
+            assert captured_body.get("reasoning_effort") == "high"
+
+    @pytest.mark.asyncio
+    async def test_complete_fn_includes_reasoning_effort(self, config_with_reasoning):
+        """Test _complete_fn includes reasoning_effort in request body."""
+        runner = SessionRunner(config_with_reasoning)
+        async with runner:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(
+                return_value={"choices": [{"message": {"content": "Summary"}}]}
+            )
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=None)
+
+            captured_body = {}
+
+            def capture_post(url, json=None, **kwargs):
+                captured_body.update(json or {})
+                return mock_response
+
+            with patch.object(runner.client, "post", side_effect=capture_post):
+                await runner._complete_fn([{"role": "user", "content": "Test"}])
+
+            # Check reasoning_effort was included
+            assert captured_body.get("reasoning_effort") == "high"
+
+    @pytest.mark.asyncio
+    async def test_default_reasoning_effort_is_medium(self, config):
+        """Test default reasoning_effort is 'medium'."""
+        runner = SessionRunner(config)
+        async with runner:
+            # Create streaming response mock
+            sse_lines = [
+                b'data: {"choices":[{"delta":{"content":"Response"}}]}\n',
+                b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+                b"data: [DONE]\n",
+            ]
+
+            async def async_iter():
+                for line in sse_lines:
+                    yield line
+
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.content = async_iter()
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=None)
+
+            captured_body = {}
+
+            def capture_post(url, json=None, **kwargs):
+                captured_body.update(json or {})
+                return mock_response
+
+            with patch.object(runner.client, "post", side_effect=capture_post):
+                messages = [{"role": "user", "content": "Test"}]
+                await runner._run_conversation(messages)
+
+            # Check default reasoning_effort is medium
+            assert captured_body.get("reasoning_effort") == "medium"

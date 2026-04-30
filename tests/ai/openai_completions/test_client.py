@@ -238,3 +238,29 @@ class TestOpenAICompletionsClient:
                 assert not isinstance(result, AsyncGenerator)
                 assert "error" in result
                 assert result["status_code"] == 500
+
+    @pytest.mark.asyncio
+    async def test_reasoning_effort_passthrough(self, client: OpenAICompletionsClient) -> None:
+        """Test reasoning_effort parameter is passed through to upstream API."""
+        mock_response = MagicMock()
+        mock_response.id = "chatcmpl-123"
+        mock_response.model_dump = MagicMock(return_value={"id": "chatcmpl-123"})
+
+        with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:
+            mock_instance = AsyncMock()
+            mock_instance.chat.completions.create = AsyncMock(return_value=mock_response)
+            mock_instance.close = AsyncMock()
+            mock_openai.return_value = mock_instance
+
+            async with client:
+                await client.chat_completions(
+                    {
+                        "messages": [{"role": "user", "content": "Hello"}],
+                        "reasoning_effort": "high",
+                    },
+                    stream=False,
+                )
+
+                # Check that reasoning_effort was passed through
+                call_kwargs = mock_instance.chat.completions.create.call_args
+                assert call_kwargs[1]["reasoning_effort"] == "high"

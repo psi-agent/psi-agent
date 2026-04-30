@@ -6,6 +6,13 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any
 
+# Mapping from OpenAI reasoning_effort to Anthropic thinking.budget_tokens
+REASONING_EFFORT_TO_BUDGET_TOKENS: dict[str, int] = {
+    "low": 1024,
+    "medium": 4096,
+    "high": 16384,
+}
+
 
 def translate_openai_to_anthropic(
     openai_request: dict[str, Any], max_tokens: int = 4096
@@ -65,6 +72,13 @@ def translate_openai_to_anthropic(
     for param in ["model", "max_tokens", "temperature", "stream", "top_p", "stop"]:
         if param in openai_request:
             anthropic_request[param] = openai_request[param]
+
+    # Map reasoning_effort to Anthropic thinking.budget_tokens
+    reasoning_effort = openai_request.get("reasoning_effort")
+    if reasoning_effort is not None and reasoning_effort in REASONING_EFFORT_TO_BUDGET_TOKENS:
+        anthropic_request["thinking"] = {
+            "budget_tokens": REASONING_EFFORT_TO_BUDGET_TOKENS[reasoning_effort]
+        }
 
     # Add default max_tokens if not provided
     if "max_tokens" not in anthropic_request:
