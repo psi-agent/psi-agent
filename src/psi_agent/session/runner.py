@@ -389,7 +389,7 @@ class SessionRunner:
                                 content_chunks.append(delta["content"])
                                 logger.debug(f"Stream content chunk: {delta['content'][:100]}...")
 
-                            if "tool_calls" in delta:
+                            if delta.get("tool_calls"):
                                 tool_calls_data.extend(delta["tool_calls"])
                         except json.JSONDecodeError:
                             pass
@@ -558,7 +558,7 @@ class SessionRunner:
                                 content_chunks.append(delta["content"])
                                 logger.debug(f"Stream content chunk: {delta['content'][:100]}...")
 
-                            if "tool_calls" in delta:
+                            if delta.get("tool_calls"):
                                 tool_calls_data.extend(delta["tool_calls"])
                         except json.JSONDecodeError:
                             pass
