@@ -95,12 +95,18 @@ async def _handle_streaming(response: aiohttp.ClientResponse) -> str:
             try:
                 chunk = json.loads(line_str[6:])
                 delta = chunk.get("choices", [{}])[0].get("delta", {})
+
+                # Log reasoning field if present and non-empty
+                reasoning = delta.get("reasoning")
+                if reasoning:
+                    logger.debug(f"Stream reasoning chunk: {reasoning}")
+
+                # Log content field if present and non-empty
                 content = delta.get("content")
                 if content is not None:
                     content_parts.append(content)
-                    truncated = content[:100]
-                    suffix = "..." if len(content) > 100 else ""
-                    logger.debug(f"Stream chunk: {truncated}{suffix}")
+                    if content:
+                        logger.debug(f"Stream content chunk: {content}")
                     # Print chunk immediately for streaming
                     print(content, end="", flush=True)
             except json.JSONDecodeError:
