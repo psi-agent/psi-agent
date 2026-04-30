@@ -124,7 +124,9 @@ class AnthropicMessagesClient:
         assert self._client is not None
         client = self._client  # Capture for closure
 
-        body["stream"] = True
+        # Remove 'stream' key - messages.stream() doesn't accept this parameter
+        body = {k: v for k, v in body.items() if k != "stream"}
+
         try:
             logger.info("Starting streaming request")
 
