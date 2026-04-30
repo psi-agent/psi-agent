@@ -529,6 +529,9 @@ class TestAnthropicMessagesClient:
                     stream=True,
                 )
 
+                # Type narrowing: streaming returns AsyncGenerator
+                assert isinstance(result, AsyncGenerator)
+
                 chunks = []
                 async for chunk in result:
                     chunks.append(chunk)
@@ -578,6 +581,9 @@ class TestAnthropicMessagesClient:
                     {"messages": [{"role": "user", "content": "Hello"}], "max_tokens": 1024},
                     stream=True,
                 )
+
+                # Type narrowing: streaming returns AsyncGenerator
+                assert isinstance(result, AsyncGenerator)
 
                 chunks = []
                 async for chunk in result:
@@ -629,6 +635,9 @@ class TestAnthropicMessagesClient:
                     {"messages": [{"role": "user", "content": "Hello"}], "max_tokens": 1024},
                     stream=True,
                 )
+
+                # Type narrowing: streaming returns AsyncGenerator
+                assert isinstance(result, AsyncGenerator)
 
                 chunks = []
                 async for chunk in result:
