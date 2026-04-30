@@ -15,7 +15,7 @@ from loguru import logger
 async def send_message(
     session_socket: str,
     message: str,
-    stream: bool = False,
+    stream: bool = True,
 ) -> str:
     """Send a message to psi-session and return the response.
 
@@ -117,17 +117,18 @@ class Cli:
 
     session_socket: str
     message: str
-    stream: bool = False
+    no_stream: bool = False
+    """Disable streaming mode (default: streaming enabled)."""
 
     def __call__(self) -> None:
         logger.debug(f"Connecting to session socket: {self.session_socket}")
         logger.debug(f"Sending message: {self.message[:50]}...")
 
-        result = asyncio.run(send_message(self.session_socket, self.message, self.stream))
+        result = asyncio.run(send_message(self.session_socket, self.message, not self.no_stream))
 
         # For non-streaming, print the result
         # For streaming, it's already printed
-        if not self.stream:
+        if self.no_stream:
             print(result)
 
         # Exit with appropriate code

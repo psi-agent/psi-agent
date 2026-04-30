@@ -10,7 +10,13 @@ import anyio
 import pytest
 
 from psi_agent.session.config import SessionConfig
-from psi_agent.session.runner import SessionRunner, load_system_prompt
+from psi_agent.session.runner import (
+    SessionRunner,
+    format_thinking_block,
+    format_tool_call_thinking,
+    load_system_prompt,
+)
+from psi_agent.session.tool_loader import load_tool_from_file
 from psi_agent.session.workspace_watcher import ChangeSummary
 
 
@@ -134,16 +140,20 @@ async def test_process_request_adds_to_history(config):
     """Test process_request adds user message to history."""
     runner = SessionRunner(config)
     async with runner:
-        # Mock the AI client response using context manager
+        # Create streaming response mock
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"content":"Hello!"}}]}\n',
+            b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={
-                "choices": [
-                    {"message": {"role": "assistant", "content": "Hello!"}, "finish_reason": "stop"}
-                ]
-            }
-        )
+        mock_response.content = async_iter()
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
         mock_response.__aexit__ = AsyncMock(return_value=None)
 
@@ -161,18 +171,20 @@ async def test_process_request_returns_response(config):
     """Test process_request returns AI response."""
     runner = SessionRunner(config)
     async with runner:
+        # Create streaming response mock
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"content":"Response text"}}]}\n',
+            b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(
-            return_value={
-                "choices": [
-                    {
-                        "message": {"role": "assistant", "content": "Response text"},
-                        "finish_reason": "stop",
-                    }
-                ]
-            }
-        )
+        mock_response.content = async_iter()
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
         mock_response.__aexit__ = AsyncMock(return_value=None)
 
@@ -403,3 +415,219 @@ class TestRunnerScheduleExecutor:
         runner.set_schedule_executor(executor)
 
         assert runner._schedule_executor == executor
+
+
+@pytest.mark.asyncio
+async def test_run_conversation_uses_streaming(config):
+    """Test _run_conversation uses streaming internally for AI calls."""
+    runner = SessionRunner(config)
+    async with runner:
+        # Create mock streaming response
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b'data: {"choices":[{"delta":{"content":" world"}}]}\n',
+            b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=None)
+
+        with patch.object(runner.client, "post", return_value=mock_response) as mock_post:
+            messages = [{"role": "user", "content": "Hi"}]
+            result = await runner._run_conversation(messages)
+
+            # Verify streaming was requested
+            call_args = mock_post.call_args
+            request_body = call_args[1]["json"]
+            assert request_body.get("stream") is True
+
+            # Verify response
+            assert "choices" in result
+            assert result["choices"][0]["message"]["content"] == "Hello world"
+
+
+@pytest.mark.asyncio
+async def test_run_conversation_handles_tool_calls_from_stream(config):
+    """Test _run_conversation handles tool calls from streaming response."""
+    runner = SessionRunner(config)
+    async with runner:
+        # Create a tool for testing
+        tool_file = config.tools_dir() / "echo.py"
+        await tool_file.write_text(
+            """
+async def tool(message: str) -> str:
+    '''Echo tool.
+
+    Args:
+        message: The message to echo.
+
+    Returns:
+        The echoed message.
+    '''
+    return message
+"""
+        )
+        tool_schema = await load_tool_from_file(tool_file)
+        if tool_schema:
+            runner.registry.register(tool_schema)
+
+        # First streaming response with tool call
+        sse_lines_tool = [
+            b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1",'
+            b'"function":{"name":"echo","arguments":"{\\"mes"}}]}}]}\n',
+            b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,'
+            b'"function":{"arguments":"sage\\": \\"test\\"}"}}]}}\n',
+            b"data: [DONE]\n",
+        ]
+
+        # Second streaming response after tool execution
+        sse_lines_final = [
+            b'data: {"choices":[{"delta":{"content":"Done"}}]}\n',
+            b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        call_count = 0
+
+        def make_async_iter(lines):
+            async def async_iter():
+                for line in lines:
+                    yield line
+
+            return async_iter()
+
+        def mock_post_side_effect(*_args, **_kwargs):
+            nonlocal call_count
+            call_count += 1
+
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=None)
+
+            if call_count == 1:
+                mock_response.content = make_async_iter(sse_lines_tool)
+            else:
+                mock_response.content = make_async_iter(sse_lines_final)
+
+            return mock_response
+
+        with patch.object(runner.client, "post", side_effect=mock_post_side_effect):
+            messages = [{"role": "user", "content": "Test tool"}]
+            result = await runner._run_conversation(messages)
+
+            # Should have made 2 calls (tool call + final response)
+            assert call_count == 2
+            assert "choices" in result
+            # Check that thinking block is included
+            content = result["choices"][0]["message"]["content"]
+            assert "<thinking>" in content
+            assert "[Tool: echo]" in content
+
+
+def test_format_thinking_block():
+    """Test format_thinking_block creates correct format."""
+    content = "Test thinking"
+    result = format_thinking_block(content)
+
+    assert result == "<thinking>\nTest thinking\n</thinking>"
+
+
+def test_format_tool_call_thinking():
+    """Test format_tool_call_thinking creates correct format."""
+    result = format_tool_call_thinking(
+        tool_name="test_tool",
+        arguments='{"arg": "value"}',
+        result="success",
+    )
+
+    assert "<thinking>" in result
+    assert "[Tool: test_tool]" in result
+    assert 'Arguments: {"arg": "value"}' in result
+    assert "Result: success" in result
+    assert "</thinking>" in result
+
+
+@pytest.mark.asyncio
+async def test_run_conversation_includes_thinking(config):
+    """Test _run_conversation includes thinking blocks for tool calls."""
+    runner = SessionRunner(config)
+    async with runner:
+        # Create a tool for testing
+        tool_file = config.tools_dir() / "echo.py"
+        await tool_file.write_text(
+            """
+async def tool(message: str) -> str:
+    '''Echo tool.
+
+    Args:
+        message: The message to echo.
+
+    Returns:
+        The echoed message.
+    '''
+    return message
+"""
+        )
+        tool_schema = await load_tool_from_file(tool_file)
+        if tool_schema:
+            runner.registry.register(tool_schema)
+
+        # First streaming response with tool call
+        sse_lines_tool = [
+            b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1",'
+            b'"function":{"name":"echo","arguments":"{\\"mes"}}]}}]}\n',
+            b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,'
+            b'"function":{"arguments":"sage\\": \\"test\\"}"}}]}}\n',
+            b"data: [DONE]\n",
+        ]
+
+        # Second streaming response after tool execution
+        sse_lines_final = [
+            b'data: {"choices":[{"delta":{"content":"Done"}}]}\n',
+            b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        call_count = 0
+
+        def make_async_iter(lines):
+            async def async_iter():
+                for line in lines:
+                    yield line
+
+            return async_iter()
+
+        def mock_post_side_effect(*_args, **_kwargs):
+            nonlocal call_count
+            call_count += 1
+
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=None)
+
+            if call_count == 1:
+                mock_response.content = make_async_iter(sse_lines_tool)
+            else:
+                mock_response.content = make_async_iter(sse_lines_final)
+
+            return mock_response
+
+        with patch.object(runner.client, "post", side_effect=mock_post_side_effect):
+            messages = [{"role": "user", "content": "Test tool"}]
+            result = await runner._run_conversation(messages)
+
+            # Check that thinking block is prepended
+            content = result["choices"][0]["message"]["content"]
+            assert content.startswith("<thinking>")
+            assert "[Tool: echo]" in content
+            assert "Done" in content  # Final response is after thinking

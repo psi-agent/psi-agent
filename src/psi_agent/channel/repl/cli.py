@@ -17,12 +17,14 @@ class Repl:
     """Run the REPL channel for interactive conversation."""
 
     session_socket: str
+    no_stream: bool = False
+    """Disable streaming mode (default: streaming enabled)."""
 
     def __call__(self) -> None:
         logger.info("Starting psi-channel-repl")
-        logger.debug(f"Config: session_socket={self.session_socket}")
+        logger.debug(f"Config: session_socket={self.session_socket}, stream={not self.no_stream}")
 
-        config = ReplConfig(session_socket=self.session_socket)
+        config = ReplConfig(session_socket=self.session_socket, stream=not self.no_stream)
         repl = ReplRunner(config)
 
         asyncio.run(repl.run())

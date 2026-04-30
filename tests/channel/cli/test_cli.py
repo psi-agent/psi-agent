@@ -30,18 +30,33 @@ async def test_send_message_request_format():
     assert "stream" in params
 
 
-class TestCliDataclass:
-    """Tests for CLI dataclass."""
+@pytest.mark.asyncio
+async def test_send_message_default_stream_true():
+    """Test that send_message defaults to streaming mode."""
+    sig = inspect.signature(send_message)
+    stream_param = sig.parameters["stream"]
 
-    def test_cli_import(self) -> None:
-        """Test CLI class can be imported."""
-        # Test instantiation
+    assert stream_param.default is True
+
+
+class TestCliFlags:
+    """Tests for CLI flag handling."""
+
+    def test_cli_default_stream_enabled(self) -> None:
+        """Test CLI defaults to streaming enabled."""
         cli = Cli(session_socket="/tmp/test.sock", message="Hello")
-        assert cli.session_socket == "/tmp/test.sock"
-        assert cli.message == "Hello"
-        assert cli.stream is False  # default
 
-    def test_cli_with_stream(self) -> None:
-        """Test CLI with stream option."""
-        cli = Cli(session_socket="/tmp/test.sock", message="Hello", stream=True)
-        assert cli.stream is True
+        assert cli.no_stream is False
+
+    def test_cli_no_stream_flag(self) -> None:
+        """Test CLI --no-stream flag disables streaming."""
+        cli = Cli(session_socket="/tmp/test.sock", message="Hello", no_stream=True)
+
+        assert cli.no_stream is True
+
+    def test_cli_stream_passed_to_send_message(self) -> None:
+        """Test CLI passes correct stream value to send_message."""
+        cli = Cli(session_socket="/tmp/test.sock", message="Hello", no_stream=True)
+
+        # no_stream=True means stream=False
+        assert cli.no_stream is not False

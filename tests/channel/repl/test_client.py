@@ -161,3 +161,122 @@ class TestReplClient:
 
         with pytest.raises(RuntimeError, match="Client not initialized"):
             await client.send_message("Hi")
+
+    @pytest.mark.asyncio
+    async def test_send_message_stream_success(self, client: ReplClient) -> None:
+        """Test successful streaming message sending."""
+        # SSE response data
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b'data: {"choices":[{"delta":{"content":" world"}}]}\n',
+            b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        # Create async iterator mock
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        chunks_received = []
+
+        def on_chunk(chunk: str) -> None:
+            chunks_received.append(chunk)
+
+        with (
+            patch("aiohttp.UnixConnector") as mock_connector,
+            patch("aiohttp.ClientSession") as mock_session,
+        ):
+            mock_connector_instance = AsyncMock()
+            mock_connector_instance.close = AsyncMock()
+            mock_connector.return_value = mock_connector_instance
+
+            mock_session_instance = MagicMock()
+            mock_session_instance.post = MagicMock(
+                return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_response))
+            )
+            mock_session_instance.close = AsyncMock()
+            mock_session.return_value = mock_session_instance
+
+            async with client:
+                result = await client.send_message_stream("Hi", on_chunk=on_chunk)
+
+                assert result == "Hello world"
+                assert chunks_received == ["Hello", " world"]
+
+    @pytest.mark.asyncio
+    async def test_send_message_stream_without_callback(self, client: ReplClient) -> None:
+        """Test streaming without callback still returns full content."""
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"content":"Test"}}]}\n',
+            b'data: {"choices":[{"delta":{"content":" response"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        # Create async iterator mock
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        with (
+            patch("aiohttp.UnixConnector") as mock_connector,
+            patch("aiohttp.ClientSession") as mock_session,
+        ):
+            mock_connector_instance = AsyncMock()
+            mock_connector_instance.close = AsyncMock()
+            mock_connector.return_value = mock_connector_instance
+
+            mock_session_instance = MagicMock()
+            mock_session_instance.post = MagicMock(
+                return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_response))
+            )
+            mock_session_instance.close = AsyncMock()
+            mock_session.return_value = mock_session_instance
+
+            async with client:
+                result = await client.send_message_stream("Hi")
+
+                assert result == "Test response"
+
+    @pytest.mark.asyncio
+    async def test_send_message_stream_error_status(self, client: ReplClient) -> None:
+        """Test handling error status from session in streaming mode."""
+        mock_response = MagicMock()
+        mock_response.status = 500
+        mock_response.text = AsyncMock(return_value="Internal error")
+
+        with (
+            patch("aiohttp.UnixConnector") as mock_connector,
+            patch("aiohttp.ClientSession") as mock_session,
+        ):
+            mock_connector_instance = AsyncMock()
+            mock_connector_instance.close = AsyncMock()
+            mock_connector.return_value = mock_connector_instance
+
+            mock_session_instance = MagicMock()
+            mock_session_instance.post = MagicMock(
+                return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_response))
+            )
+            mock_session_instance.close = AsyncMock()
+            mock_session.return_value = mock_session_instance
+
+            async with client:
+                result = await client.send_message_stream("Hi")
+
+                assert "Error" in result
+
+    @pytest.mark.asyncio
+    async def test_send_message_stream_without_context(self, config: ReplConfig) -> None:
+        """Test that send_message_stream raises error without context."""
+        client = ReplClient(config)
+
+        with pytest.raises(RuntimeError, match="Client not initialized"):
+            await client.send_message_stream("Hi")

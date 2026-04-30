@@ -259,20 +259,22 @@ class TestHandleChatCompletionsWithRunner:
                 assert response.content_type == "text/event-stream"
 
     @pytest.mark.asyncio
-    async def test_handle_streaming_with_dict_response(self, config):
-        """Test handling streaming request that returns dict (tool calls involved)."""
+    async def test_handle_streaming_with_tool_calls(self, config):
+        """Test handling streaming request with tool calls (thinking blocks included)."""
         server = SessionServer(config)
 
         runner = SessionRunner(config)
         server.runner = runner
 
-        # process_streaming_request can return dict when tool calls are involved
-        mock_process_streaming_request = AsyncMock(
-            return_value={
-                "choices": [{"message": {"role": "assistant", "content": "Result"}}],
-                "model": "session",
-            }
-        )
+        # process_streaming_request now always returns async generator
+        async def mock_stream_gen():
+            yield 'data: {"choices":[{"delta":{"content":"<thinking>"}}]}\n\n'
+            yield 'data: {"choices":[{"delta":{"content":"[Tool: test]"}}]}\n\n'
+            yield 'data: {"choices":[{"delta":{"content":"</thinking>"}}]}\n\n'
+            yield 'data: {"choices":[{"delta":{"content":"Result"}}]}\n\n'
+            yield "data: [DONE]\n\n"
+
+        mock_process_streaming_request = AsyncMock(return_value=mock_stream_gen())
 
         mock_request = MagicMock()
         mock_request.json = AsyncMock(
@@ -288,5 +290,5 @@ class TestHandleChatCompletionsWithRunner:
             with patch.object(runner, "process_streaming_request", mock_process_streaming_request):
                 response = await server._handle_chat_completions(mock_request)
                 assert response.content_type == "text/event-stream"
-                # Verify write was called with the filtered response
+                # Verify write was called with the streaming content
                 mock_response.write.assert_called()

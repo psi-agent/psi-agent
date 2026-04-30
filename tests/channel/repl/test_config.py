@@ -42,3 +42,15 @@ class TestReplConfig:
         config = ReplConfig(session_socket="/tmp/test.sock")
 
         assert config.history_file is None
+
+    def test_stream_default_true(self) -> None:
+        """Test stream defaults to True."""
+        config = ReplConfig(session_socket="/tmp/test.sock")
+
+        assert config.stream is True
+
+    def test_stream_can_be_disabled(self) -> None:
+        """Test stream can be set to False."""
+        config = ReplConfig(session_socket="/tmp/test.sock", stream=False)
+
+        assert config.stream is False

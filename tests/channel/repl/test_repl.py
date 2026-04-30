@@ -64,9 +64,9 @@ class TestRepl:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_quit_command(self, repl: Repl) -> None:
-        """Test /quit command exits REPL."""
-        inputs = ["/quit"]
+    async def test_eof_exits_repl(self, repl: Repl) -> None:
+        """Test EOF (Ctrl+D) exits REPL."""
+        inputs = [None]  # EOF
         input_iter = iter(inputs)
 
         async def mock_read() -> str | None:
@@ -79,9 +79,22 @@ class TestRepl:
             assert any("Goodbye" in str(call) for call in mock_print.call_args_list)
 
     @pytest.mark.asyncio
+    async def test_keyboard_interrupt_exits_repl(self, repl: Repl) -> None:
+        """Test Ctrl+C exits REPL."""
+
+        async def mock_read() -> str | None:
+            raise KeyboardInterrupt()
+
+        with patch.object(repl, "_read_input", mock_read), patch("builtins.print") as mock_print:
+            await repl.run()
+
+            # Check goodbye message was printed
+            assert any("Goodbye" in str(call) for call in mock_print.call_args_list)
+
+    @pytest.mark.asyncio
     async def test_empty_input_ignored(self, repl: Repl) -> None:
         """Test empty input is ignored."""
-        inputs = ["", "/quit"]
+        inputs = ["", None]  # Empty string, then EOF
         input_iter = iter(inputs)
 
         async def mock_read() -> str | None:
@@ -101,22 +114,24 @@ class TestRepl:
     @pytest.mark.asyncio
     async def test_message_sent_to_session(self, repl: Repl) -> None:
         """Test message is sent to session."""
-        inputs = ["Hello", "/quit"]
+        inputs = ["Hello", None]  # Message, then EOF
         input_iter = iter(inputs)
 
         async def mock_read() -> str | None:
             return next(input_iter, None)
 
-        mock_send = AsyncMock(return_value="Hi there!")
+        mock_send_stream = AsyncMock(return_value="Hi there!")
         with (
             patch.object(repl, "_read_input", mock_read),
-            patch.object(repl.client, "send_message", mock_send),
+            patch.object(repl.client, "send_message_stream", mock_send_stream),
             patch("builtins.print"),
         ):
             await repl.run()
 
-            # send_message should be called with the user input
-            mock_send.assert_called_once_with("Hello")
+            # send_message_stream should be called with the user input
+            assert mock_send_stream.called
+            call_args = mock_send_stream.call_args
+            assert call_args[0][0] == "Hello"
 
 
 class TestReplHistory:
@@ -136,7 +151,7 @@ class TestReplHistory:
     @pytest.mark.asyncio
     async def test_history_stored_in_session(self, repl: Repl) -> None:
         """Test that inputs are stored in prompt-toolkit history."""
-        inputs = ["First message", "Second message", "/quit"]
+        inputs = ["First message", "Second message", None]  # Messages, then EOF
         input_iter = iter(inputs)
 
         async def mock_read() -> str | None:
@@ -160,7 +175,7 @@ class TestReplHistory:
         config = ReplConfig(session_socket="/tmp/test.sock", history_file=str(history_file))
         repl = Repl(config)
 
-        inputs = ["First message", "/quit"]
+        inputs = ["First message", None]  # Message, then EOF
         input_iter = iter(inputs)
 
         async def mock_read() -> str | None:
@@ -189,7 +204,7 @@ class TestReplHistory:
         config = ReplConfig(session_socket="/tmp/test.sock", history_file=str(history_file))
         repl = Repl(config)
 
-        inputs = ["/quit"]
+        inputs = [None]  # EOF
         input_iter = iter(inputs)
 
         async def mock_read() -> str | None:
@@ -213,22 +228,24 @@ class TestReplHistory:
     async def test_multiline_input_preserved(self, repl: Repl) -> None:
         """Test multiline input is preserved with line breaks."""
         multiline_input = "Line 1\nLine 2\nLine 3"
-        inputs = [multiline_input, "/quit"]
+        inputs = [multiline_input, None]  # Message, then EOF
         input_iter = iter(inputs)
 
         async def mock_read() -> str | None:
             return next(input_iter, None)
 
-        mock_send = AsyncMock(return_value="Response")
+        mock_send_stream = AsyncMock(return_value="Response")
         with (
             patch.object(repl, "_read_input", mock_read),
-            patch.object(repl.client, "send_message", mock_send),
+            patch.object(repl.client, "send_message_stream", mock_send_stream),
             patch("builtins.print"),
         ):
             await repl.run()
 
             # Check multiline message preserved
-            mock_send.assert_called_once_with(multiline_input)
+            assert mock_send_stream.called
+            call_args = mock_send_stream.call_args
+            assert call_args[0][0] == multiline_input
 
 
 class TestReplEditing:
@@ -248,7 +265,7 @@ class TestReplEditing:
     @pytest.mark.asyncio
     async def test_prompt_session_created(self, repl: Repl) -> None:
         """Test that PromptSession is created during run."""
-        inputs = ["/quit"]
+        inputs = [None]  # EOF
         input_iter = iter(inputs)
 
         async def mock_read() -> str | None:

@@ -21,6 +21,37 @@ from psi_agent.session.types import History, ToolRegistry
 from psi_agent.session.workspace_watcher import ChangeSummary, WorkspaceWatcher
 
 
+def format_thinking_block(content: str) -> str:
+    """Format content as a thinking block.
+
+    Args:
+        content: The thinking content to format.
+
+    Returns:
+        Formatted thinking block string.
+    """
+    return f"<thinking>\n{content}\n</thinking>"
+
+
+def format_tool_call_thinking(
+    tool_name: str,
+    arguments: str,
+    result: str,
+) -> str:
+    """Format tool call information as thinking content.
+
+    Args:
+        tool_name: Name of the tool called.
+        arguments: JSON string of tool arguments.
+        result: Result from tool execution.
+
+    Returns:
+        Formatted thinking block for the tool call.
+    """
+    content = f"[Tool: {tool_name}]\nArguments: {arguments}\nResult: {result}"
+    return format_thinking_block(content)
+
+
 async def _load_system(workspace: anyio.Path) -> Any:
     """Load System class from workspace systems.
 
@@ -306,144 +337,31 @@ class SessionRunner:
     async def _run_conversation(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
         """Run conversation with LLM, handling tool calls.
 
+        Uses streaming internally for better error detection and unified handling.
+
         Args:
             messages: Messages to send to LLM.
 
         Returns:
-            Final response from LLM.
+            Final response from LLM with thinking content prepended.
         """
         assert self.client is not None
         assert self.history is not None
 
         current_messages = list(messages)
+        thinking_blocks: list[str] = []
 
         while True:
-            # Build request
+            # Build request with streaming enabled
             request_body = {
                 "model": "session",  # Model is determined by psi-ai
                 "messages": current_messages,
                 "tools": self.registry.list_tools(),
+                "stream": True,
             }
             logger.debug(
                 f"AI request body: {json.dumps(request_body, ensure_ascii=False, indent=2)}"
             )
-
-            # Call psi-ai
-            async with self.client.post(
-                "http://localhost/v1/chat/completions",
-                json=request_body,
-            ) as response:
-                if response.status != 200:
-                    text = await response.text()
-                    logger.error(f"AI request failed: {response.status} - {text}")
-                    return self._make_error_response(f"AI request failed: {text}")
-
-                result = await response.json()
-                logger.debug(
-                    f"AI response body: {json.dumps(result, ensure_ascii=False, indent=2)}"
-                )
-
-            # Check for tool calls
-            choice = result.get("choices", [{}])[0]
-            message = choice.get("message", {})
-            tool_calls = message.get("tool_calls", [])
-
-            if not tool_calls:
-                # No tool calls - we're done
-                # Add assistant message to history
-                self.history.add_message(message)
-                return result
-
-            # Add assistant message with tool calls to history
-            self.history.add_message(message)
-
-            # Execute tools
-            tool_messages = await execute_tools_parallel(self.registry, tool_calls)
-
-            # Add tool results to history and current messages
-            for tool_msg in tool_messages:
-                self.history.add_message(tool_msg)
-                current_messages.append(message)
-                current_messages.append(tool_msg)
-
-            logger.debug(f"Executed {len(tool_calls)} tool calls, continuing conversation")
-
-    def _make_error_response(self, error: str) -> dict[str, Any]:
-        """Create an OpenAI-format error response.
-
-        Args:
-            error: Error message.
-
-        Returns:
-            Error response dict.
-        """
-        return {
-            "choices": [
-                {
-                    "message": {
-                        "role": "assistant",
-                        "content": f"Error: {error}",
-                    },
-                    "finish_reason": "stop",
-                }
-            ]
-        }
-
-    async def process_streaming_request(
-        self, user_message: dict[str, Any]
-    ) -> AsyncGenerator[str] | dict[str, Any]:
-        """Process a user request with streaming response.
-
-        Args:
-            user_message: User message dict with role and content.
-
-        Returns:
-            Async generator yielding SSE chunks.
-        """
-        assert self.history is not None
-        assert self.client is not None
-
-        # Check for workspace changes
-        if self._watcher is not None:
-            changes = await self._watcher.check_for_changes()
-            if changes.has_changes:
-                await self._handle_workspace_changes(changes)
-
-        # Add user message to history
-        self.history.add_message(user_message)
-
-        # Build messages for LLM
-        messages = await self._build_messages()
-
-        # For streaming, we need to handle tool calls differently
-        # This implementation handles non-streaming for tool calls, then streams final response
-        return await self._run_streaming_conversation(messages)
-
-    async def _run_streaming_conversation(
-        self, messages: list[dict[str, Any]]
-    ) -> AsyncGenerator[str] | dict[str, Any]:
-        """Run conversation with streaming, handling tool calls.
-
-        Args:
-            messages: Messages to send to LLM.
-
-        Returns:
-            Async generator yielding SSE chunks, or final response dict.
-        """
-
-        assert self.client is not None
-        assert self.history is not None
-
-        current_messages = list(messages)
-
-        while True:
-            # Build request
-            request_body = {
-                "model": "session",
-                "messages": current_messages,
-                "tools": self.registry.list_tools(),
-                "stream": True,
-            }
 
             # Call psi-ai with streaming
             async with self.client.post(
@@ -492,6 +410,18 @@ class SessionRunner:
                 # Execute tools
                 tool_messages = await execute_tools_parallel(self.registry, tool_calls)
 
+                # Generate thinking blocks for each tool call
+                for i, tool_call in enumerate(tool_calls):
+                    tool_name = tool_call.get("function", {}).get("name", "unknown")
+                    arguments = tool_call.get("function", {}).get("arguments", "{}")
+                    # Get corresponding tool result
+                    if i < len(tool_messages):
+                        tool_result = tool_messages[i].get("content", "")
+                    else:
+                        tool_result = ""
+                    thinking_block = format_tool_call_thinking(tool_name, arguments, tool_result)
+                    thinking_blocks.append(thinking_block)
+
                 # Add tool results to history and current messages
                 for tool_msg in tool_messages:
                     self.history.add_message(tool_msg)
@@ -501,13 +431,194 @@ class SessionRunner:
                 logger.debug(f"Executed {len(tool_calls)} tool calls, continuing conversation")
                 continue
 
-            # No tool calls - return streaming response
+            # No tool calls - we're done
+            final_content = "".join(content_chunks)
+            self.history.add_message({"role": "assistant", "content": final_content})
+
+            # Prepend thinking blocks to final content
+            if thinking_blocks:
+                thinking_content = "\n".join(thinking_blocks) + "\n"
+                final_content = thinking_content + final_content
+
+            # Return as non-streaming response format
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": final_content,
+                        },
+                        "finish_reason": "stop",
+                    }
+                ]
+            }
+
+    def _make_error_response(self, error: str) -> dict[str, Any]:
+        """Create an OpenAI-format error response.
+
+        Args:
+            error: Error message.
+
+        Returns:
+            Error response dict.
+        """
+        return {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": f"Error: {error}",
+                    },
+                    "finish_reason": "stop",
+                }
+            ]
+        }
+
+    async def process_streaming_request(self, user_message: dict[str, Any]) -> AsyncGenerator[str]:
+        """Process a user request with streaming response.
+
+        Args:
+            user_message: User message dict with role and content.
+
+        Returns:
+            Async generator yielding SSE chunks.
+        """
+        assert self.history is not None
+        assert self.client is not None
+
+        # Check for workspace changes
+        if self._watcher is not None:
+            changes = await self._watcher.check_for_changes()
+            if changes.has_changes:
+                await self._handle_workspace_changes(changes)
+
+        # Add user message to history
+        self.history.add_message(user_message)
+
+        # Build messages for LLM
+        messages = await self._build_messages()
+
+        # Stream the conversation
+        return self._stream_conversation(messages)
+
+    async def _stream_conversation(self, messages: list[dict[str, Any]]) -> AsyncGenerator[str]:
+        """Stream conversation with thinking blocks.
+
+        Args:
+            messages: Messages to send to LLM.
+
+        Yields:
+            SSE formatted strings including thinking blocks and final content.
+        """
+        assert self.client is not None
+        assert self.history is not None
+
+        current_messages = list(messages)
+
+        while True:
+            # Build request
+            request_body = {
+                "model": "session",
+                "messages": current_messages,
+                "tools": self.registry.list_tools(),
+                "stream": True,
+            }
+
+            # Call psi-ai with streaming
+            async with self.client.post(
+                "http://localhost/v1/chat/completions",
+                json=request_body,
+            ) as response:
+                if response.status != 200:
+                    text = await response.text()
+                    logger.error(f"AI request failed: {response.status} - {text}")
+                    # Yield error as SSE
+                    error_content = f"Error: AI request failed: {text}"
+                    error_data = {
+                        "choices": [{"delta": {"content": error_content}, "finish_reason": "stop"}]
+                    }
+                    data = json.dumps(error_data)
+                    yield f"data: {data}\n\n"
+                    yield "data: [DONE]\n\n"
+                    return
+
+                # Collect streaming response
+                content_chunks = []
+                tool_calls_data = []
+                async for line in response.content:
+                    line_str = line.decode().strip()
+                    if not line_str or line_str == "data: [DONE]":
+                        continue
+                    if line_str.startswith("data: "):
+                        try:
+                            chunk = json.loads(line_str[6:])
+                            delta = chunk.get("choices", [{}])[0].get("delta", {})
+
+                            if "content" in delta:
+                                content_chunks.append(delta["content"])
+                                logger.debug(f"Stream content chunk: {delta['content'][:100]}...")
+
+                            if "tool_calls" in delta:
+                                tool_calls_data.extend(delta["tool_calls"])
+                        except json.JSONDecodeError:
+                            pass
+
+            # Check if we have tool calls
+            if tool_calls_data:
+                # Reconstruct tool calls from streaming data
+                tool_calls = self._reconstruct_tool_calls(tool_calls_data)
+
+                # Add assistant message to history
+                assistant_message = {
+                    "role": "assistant",
+                    "content": "".join(content_chunks) or None,
+                    "tool_calls": tool_calls,
+                }
+                self.history.add_message(assistant_message)
+
+                # Execute tools
+                tool_messages = await execute_tools_parallel(self.registry, tool_calls)
+
+                # Yield thinking blocks for each tool call immediately
+                for i, tool_call in enumerate(tool_calls):
+                    tool_name = tool_call.get("function", {}).get("name", "unknown")
+                    arguments = tool_call.get("function", {}).get("arguments", "{}")
+                    if i < len(tool_messages):
+                        tool_result = tool_messages[i].get("content", "")
+                    else:
+                        tool_result = ""
+                    thinking_block = format_tool_call_thinking(tool_name, arguments, tool_result)
+
+                    # Yield thinking block as SSE event
+                    thinking_data = {
+                        "choices": [{"delta": {"content": thinking_block}, "finish_reason": None}]
+                    }
+                    data = json.dumps(thinking_data)
+                    yield f"data: {data}\n\n"
+
+                # Add tool results to history and current messages
+                for tool_msg in tool_messages:
+                    self.history.add_message(tool_msg)
+                    current_messages.append(assistant_message)
+                    current_messages.append(tool_msg)
+
+                logger.debug(f"Executed {len(tool_calls)} tool calls, continuing conversation")
+                continue
+
+            # No tool calls - stream final response
             final_content = "".join(content_chunks)
             self.history.add_message({"role": "assistant", "content": final_content})
             await persist_history(self.history)
 
-            # Return as SSE generator
-            return self._make_streaming_response(content_chunks)
+            # Yield final content
+            for chunk in content_chunks:
+                chunk_data = {"choices": [{"delta": {"content": chunk}, "finish_reason": None}]}
+                data = json.dumps(chunk_data)
+                yield f"data: {data}\n\n"
+
+            # Send done marker
+            yield "data: [DONE]\n\n"
+            return
 
     def _reconstruct_tool_calls(
         self, tool_calls_data: list[dict[str, Any]]
@@ -542,20 +653,3 @@ class SessionRunner:
                     tool_calls_map[index]["function"]["arguments"] += func["arguments"]
 
         return list(tool_calls_map.values())
-
-    async def _make_streaming_response(self, content_chunks: list[str]) -> AsyncGenerator[str]:
-        """Create SSE streaming response.
-
-        Args:
-            content_chunks: List of content chunks.
-
-        Returns:
-            Async generator yielding SSE formatted strings.
-        """
-
-        for chunk in content_chunks:
-            data = json.dumps({"choices": [{"delta": {"content": chunk}, "finish_reason": None}]})
-            yield f"data: {data}\n\n"
-
-        # Send done marker
-        yield "data: [DONE]\n\n"
