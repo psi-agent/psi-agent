@@ -259,3 +259,235 @@ class TestAnthropicMessagesClient:
                 assert not isinstance(result, AsyncGenerator)
                 assert "error" in result
                 assert result["status_code"] == 500
+
+    @pytest.mark.asyncio
+    async def test_streaming_request_success(self, client: AnthropicMessagesClient) -> None:
+        """Test successful streaming request with stream key removal."""
+        from unittest.mock import MagicMock
+
+        # Create mock stream events
+        mock_event = MagicMock()
+        mock_event.type = "content_block_delta"
+        mock_event.model_dump = MagicMock(
+            return_value={
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "text_delta", "text": "Hello"},
+            }
+        )
+
+        # Create mock stream context manager
+        mock_stream = AsyncMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = MagicMock(return_value=iter([mock_event]))
+
+        with patch("psi_agent.ai.anthropic_messages.client.AsyncAnthropic") as mock_anthropic:
+            mock_instance = AsyncMock()
+            mock_instance.messages.stream = MagicMock(return_value=mock_stream)
+            mock_instance.close = AsyncMock()
+            mock_anthropic.return_value = mock_instance
+
+            async with client:
+                result = await client.messages(
+                    {
+                        "messages": [{"role": "user", "content": "Hello"}],
+                        "max_tokens": 1024,
+                        "stream": True,  # This should be filtered out
+                    },
+                    stream=True,
+                )
+
+                # Type narrowing: streaming returns AsyncGenerator
+                assert isinstance(result, AsyncGenerator)
+
+                # Collect chunks from the generator
+                chunks = []
+                async for chunk in result:
+                    chunks.append(chunk)
+
+                # Verify we got chunks
+                assert len(chunks) > 0
+
+                # Verify stream key was NOT passed to messages.stream()
+                call_kwargs = mock_instance.messages.stream.call_args[1]
+                assert "stream" not in call_kwargs
+
+    @pytest.mark.asyncio
+    async def test_streaming_request_model_injection(self, client: AnthropicMessagesClient) -> None:
+        """Test model is injected during streaming request."""
+        from unittest.mock import MagicMock
+
+        mock_event = MagicMock()
+        mock_event.type = "message_start"
+        mock_event.model_dump = MagicMock(
+            return_value={
+                "type": "message_start",
+                "message": {"id": "msg_123", "model": "claude-sonnet-4-20250514"},
+            }
+        )
+
+        mock_stream = AsyncMock()
+        mock_stream.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+        mock_stream.__aiter__ = MagicMock(return_value=iter([mock_event]))
+
+        with patch("psi_agent.ai.anthropic_messages.client.AsyncAnthropic") as mock_anthropic:
+            mock_instance = AsyncMock()
+            mock_instance.messages.stream = MagicMock(return_value=mock_stream)
+            mock_instance.close = AsyncMock()
+            mock_anthropic.return_value = mock_instance
+
+            async with client:
+                result = await client.messages(
+                    {
+                        "messages": [{"role": "user", "content": "Hello"}],
+                        "max_tokens": 1024,
+                    },
+                    stream=True,
+                )
+
+                # Type narrowing: streaming returns AsyncGenerator
+                assert isinstance(result, AsyncGenerator)
+
+                # Consume the generator
+                async for _ in result:
+                    pass
+
+                # Check that model was injected
+                call_kwargs = mock_instance.messages.stream.call_args[1]
+                assert call_kwargs["model"] == "claude-sonnet-4-20250514"
+
+    @pytest.mark.asyncio
+    async def test_streaming_request_authentication_error(
+        self, client: AnthropicMessagesClient
+    ) -> None:
+        """Test streaming request authentication error handling."""
+        from unittest.mock import MagicMock
+
+        mock_stream = AsyncMock()
+        mock_stream.__aenter__ = AsyncMock(
+            side_effect=AuthenticationError(
+                message="Invalid API key",
+                response=MagicMock(status_code=401),
+                body={"error": {"message": "Invalid API key"}},
+            )
+        )
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("psi_agent.ai.anthropic_messages.client.AsyncAnthropic") as mock_anthropic:
+            mock_instance = AsyncMock()
+            mock_instance.messages.stream = MagicMock(return_value=mock_stream)
+            mock_instance.close = AsyncMock()
+            mock_anthropic.return_value = mock_instance
+
+            async with client:
+                result = await client.messages(
+                    {
+                        "messages": [{"role": "user", "content": "Hello"}],
+                        "max_tokens": 1024,
+                    },
+                    stream=True,
+                )
+
+                # Type narrowing: streaming returns AsyncGenerator
+                assert isinstance(result, AsyncGenerator)
+
+                # Collect chunks from the generator
+                chunks = []
+                async for chunk in result:
+                    chunks.append(chunk)
+
+                # Should have error chunk
+                assert len(chunks) == 1
+                import json
+
+                error_data = json.loads(chunks[0].replace("data: ", "").strip())
+                assert "error" in error_data
+                assert error_data["status_code"] == 401
+
+    @pytest.mark.asyncio
+    async def test_streaming_request_rate_limit_error(
+        self, client: AnthropicMessagesClient
+    ) -> None:
+        """Test streaming request rate limit error handling."""
+        from unittest.mock import MagicMock
+
+        mock_stream = AsyncMock()
+        mock_stream.__aenter__ = AsyncMock(
+            side_effect=RateLimitError(
+                message="Rate limit exceeded",
+                response=MagicMock(status_code=429),
+                body={"error": {"message": "Rate limit exceeded"}},
+            )
+        )
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("psi_agent.ai.anthropic_messages.client.AsyncAnthropic") as mock_anthropic:
+            mock_instance = AsyncMock()
+            mock_instance.messages.stream = MagicMock(return_value=mock_stream)
+            mock_instance.close = AsyncMock()
+            mock_anthropic.return_value = mock_instance
+
+            async with client:
+                result = await client.messages(
+                    {
+                        "messages": [{"role": "user", "content": "Hello"}],
+                        "max_tokens": 1024,
+                    },
+                    stream=True,
+                )
+
+                # Type narrowing: streaming returns AsyncGenerator
+                assert isinstance(result, AsyncGenerator)
+
+                chunks = []
+                async for chunk in result:
+                    chunks.append(chunk)
+
+                assert len(chunks) == 1
+                import json
+
+                error_data = json.loads(chunks[0].replace("data: ", "").strip())
+                assert "error" in error_data
+                assert error_data["status_code"] == 429
+
+    @pytest.mark.asyncio
+    async def test_streaming_request_connection_error(
+        self, client: AnthropicMessagesClient
+    ) -> None:
+        """Test streaming request connection error handling."""
+        from unittest.mock import MagicMock
+
+        mock_stream = AsyncMock()
+        mock_stream.__aenter__ = AsyncMock(side_effect=APIConnectionError(request=MagicMock()))
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("psi_agent.ai.anthropic_messages.client.AsyncAnthropic") as mock_anthropic:
+            mock_instance = AsyncMock()
+            mock_instance.messages.stream = MagicMock(return_value=mock_stream)
+            mock_instance.close = AsyncMock()
+            mock_anthropic.return_value = mock_instance
+
+            async with client:
+                result = await client.messages(
+                    {
+                        "messages": [{"role": "user", "content": "Hello"}],
+                        "max_tokens": 1024,
+                    },
+                    stream=True,
+                )
+
+                # Type narrowing: streaming returns AsyncGenerator
+                assert isinstance(result, AsyncGenerator)
+
+                chunks = []
+                async for chunk in result:
+                    chunks.append(chunk)
+
+                assert len(chunks) == 1
+                import json
+
+                error_data = json.loads(chunks[0].replace("data: ", "").strip())
+                assert "error" in error_data
+                assert error_data["status_code"] == 500
