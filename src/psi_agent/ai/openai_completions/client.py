@@ -19,6 +19,38 @@ from openai.types.chat import ChatCompletion
 
 from psi_agent.ai.openai_completions.config import OpenAICompletionsConfig
 
+# Known OpenAI SDK parameters for chat.completions.create()
+# Provider-specific parameters (like 'thinking', 'reasoning_effort') are NOT included
+# and will be passed via extra_body
+KNOWN_SDK_PARAMS: set[str] = {
+    "model",
+    "messages",
+    "temperature",
+    "top_p",
+    "n",
+    "stream",
+    "stop",
+    "max_tokens",
+    "presence_penalty",
+    "frequency_penalty",
+    "logit_bias",
+    "user",
+    "response_format",
+    "tools",
+    "tool_choice",
+    "seed",
+    "logprobs",
+    "top_logprobs",
+    "parallel_tool_calls",
+    "stream_options",
+    "service_tier",
+    "modalities",
+    "audio",
+    "prediction",
+    "metadata",
+    "store",
+}
+
 
 class OpenAICompletionsClient:
     """Client for forwarding requests to OpenAI-compatible APIs."""
@@ -31,6 +63,26 @@ class OpenAICompletionsClient:
         """
         self.config = config
         self._client: AsyncOpenAI | None = None
+
+    def _split_params(self, body: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
+        """Split request body into SDK params and extra params.
+
+        Args:
+            body: The request body to split.
+
+        Returns:
+            A tuple of (sdk_params, extra_params). extra_params is None if empty.
+        """
+        sdk_params: dict[str, Any] = {}
+        extra_params: dict[str, Any] = {}
+
+        for key, value in body.items():
+            if key in KNOWN_SDK_PARAMS:
+                sdk_params[key] = value
+            else:
+                extra_params[key] = value
+
+        return sdk_params, extra_params if extra_params else None
 
     async def __aenter__(self) -> OpenAICompletionsClient:
         """Enter async context."""
@@ -92,8 +144,12 @@ class OpenAICompletionsClient:
         """
         assert self._client is not None
 
+        sdk_params, extra_params = self._split_params(body)
+
         try:
-            response: ChatCompletion = await self._client.chat.completions.create(**body)
+            response: ChatCompletion = await self._client.chat.completions.create(
+                **sdk_params, extra_body=extra_params
+            )
             logger.info("Received successful non-streaming response")
             logger.debug(f"Response id: {response.id}")
             logger.debug(
@@ -116,9 +172,13 @@ class OpenAICompletionsClient:
         assert self._client is not None
 
         body["stream"] = True
+        sdk_params, extra_params = self._split_params(body)
+
         try:
             logger.info("Starting streaming request")
-            stream = await self._client.chat.completions.create(**body)
+            stream = await self._client.chat.completions.create(
+                **sdk_params, extra_body=extra_params
+            )
             async for chunk in stream:
                 logger.debug(f"Stream chunk: {chunk.model_dump_json()}")
                 yield f"data: {chunk.model_dump_json()}\n\n"
