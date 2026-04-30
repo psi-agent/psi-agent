@@ -232,9 +232,12 @@ class TelegramBot:
         content_buffer: list[str] = []
         sent_message: Any = None
         stop_flush = asyncio.Event()
+        last_flushed_content: str = ""  # Track last flushed content to avoid redundant edits
 
         async def flush_buffer() -> None:
             """Flush the buffer content to the sent message."""
+            nonlocal last_flushed_content
+
             if sent_message is None or not content_buffer:
                 return
 
@@ -242,8 +245,13 @@ class TelegramBot:
             # Truncate if exceeds limit during streaming
             display_content = current_content[:TELEGRAM_MAX_MESSAGE_LENGTH]
 
+            # Skip edit if content hasn't changed
+            if display_content == last_flushed_content:
+                return
+
             try:
                 await sent_message.edit_text(display_content)
+                last_flushed_content = display_content
             except Exception as e:
                 logger.error(f"Failed to edit message: {e}")
 
