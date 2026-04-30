@@ -23,6 +23,20 @@ from psi_agent.ai.anthropic_messages.translator import (
     translate_anthropic_to_openai,
 )
 
+# Standard Anthropic Messages API event types that should be processed
+# Non-standard events (e.g., 'text' convenience events) are filtered out
+ANTHROPIC_STANDARD_EVENT_TYPES: frozenset[str] = frozenset(
+    {
+        "message_start",
+        "content_block_start",
+        "content_block_delta",
+        "content_block_stop",
+        "message_delta",
+        "message_stop",
+        "ping",
+    }
+)
+
 
 class AnthropicMessagesClient:
     """Client for forwarding requests to Anthropic Messages API."""
@@ -134,6 +148,10 @@ class AnthropicMessagesClient:
                 """Generate Anthropic SSE events."""
                 async with client.messages.stream(**body) as stream:
                     async for event in stream:
+                        # Filter out non-standard SDK events (e.g., 'text' convenience events)
+                        if event.type not in ANTHROPIC_STANDARD_EVENT_TYPES:
+                            logger.debug(f"Filtered non-standard event: {event.type}")
+                            continue
                         event_data = event.model_dump()
                         event_json = json.dumps(event_data, ensure_ascii=False)
                         logger.debug(f"Stream event: {event.type} - {event_json}")
