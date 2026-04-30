@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 from psi_agent.ai.anthropic_messages.cli import AnthropicMessages, main
 from psi_agent.ai.anthropic_messages.config import AnthropicMessagesConfig
 
@@ -54,6 +56,102 @@ class TestAnthropicMessagesCli:
         assert config.model == "claude-3-opus"
 
 
+class TestAnthropicMessagesCliCall:
+    """Tests for Anthropic Messages CLI __call__ method."""
+
+    @patch("psi_agent.ai.anthropic_messages.cli.asyncio.run")
+    @patch("psi_agent.ai.anthropic_messages.cli.AnthropicMessagesServer")
+    @patch("psi_agent.ai.anthropic_messages.cli.AnthropicMessagesConfig")
+    @patch("psi_agent.ai.anthropic_messages.cli.mask_sensitive_args")
+    def test_cli_call_masks_sensitive_args(
+        self,
+        mock_mask: MagicMock,
+        mock_config_cls: MagicMock,
+        mock_server_cls: MagicMock,
+        mock_run: MagicMock,
+    ) -> None:
+        """Test CLI __call__ masks sensitive arguments."""
+        mock_config = MagicMock()
+        mock_config_cls.return_value = mock_config
+        mock_server = MagicMock()
+        mock_server.start = AsyncMock()
+        mock_server.stop = AsyncMock()
+        mock_server_cls.return_value = mock_server
+
+        cli = AnthropicMessages(
+            session_socket="/tmp/test.sock",
+            model="claude-3-opus",
+            api_key="test-key",
+        )
+        cli()
+
+        mock_mask.assert_called_once_with(["api_key"])
+
+    @patch("psi_agent.ai.anthropic_messages.cli.asyncio.run")
+    @patch("psi_agent.ai.anthropic_messages.cli.AnthropicMessagesServer")
+    @patch("psi_agent.ai.anthropic_messages.cli.AnthropicMessagesConfig")
+    @patch("psi_agent.ai.anthropic_messages.cli.mask_sensitive_args")
+    def test_cli_call_creates_config(
+        self,
+        mock_mask: MagicMock,
+        mock_config_cls: MagicMock,
+        mock_server_cls: MagicMock,
+        mock_run: MagicMock,
+    ) -> None:
+        """Test CLI __call__ creates config with correct parameters."""
+        mock_config = MagicMock()
+        mock_config_cls.return_value = mock_config
+        mock_server = MagicMock()
+        mock_server.start = AsyncMock()
+        mock_server.stop = AsyncMock()
+        mock_server_cls.return_value = mock_server
+
+        cli = AnthropicMessages(
+            session_socket="/tmp/test.sock",
+            model="claude-3-opus",
+            api_key="test-key",
+            base_url="https://custom.api.com",
+            max_tokens=8192,
+        )
+        cli()
+
+        mock_config_cls.assert_called_once_with(
+            session_socket="/tmp/test.sock",
+            model="claude-3-opus",
+            api_key="test-key",
+            base_url="https://custom.api.com",
+            max_tokens=8192,
+        )
+
+    @patch("psi_agent.ai.anthropic_messages.cli.asyncio.run")
+    @patch("psi_agent.ai.anthropic_messages.cli.AnthropicMessagesServer")
+    @patch("psi_agent.ai.anthropic_messages.cli.AnthropicMessagesConfig")
+    @patch("psi_agent.ai.anthropic_messages.cli.mask_sensitive_args")
+    def test_cli_call_creates_server(
+        self,
+        mock_mask: MagicMock,
+        mock_config_cls: MagicMock,
+        mock_server_cls: MagicMock,
+        mock_run: MagicMock,
+    ) -> None:
+        """Test CLI __call__ creates server with config."""
+        mock_config = MagicMock()
+        mock_config_cls.return_value = mock_config
+        mock_server = MagicMock()
+        mock_server.start = AsyncMock()
+        mock_server.stop = AsyncMock()
+        mock_server_cls.return_value = mock_server
+
+        cli = AnthropicMessages(
+            session_socket="/tmp/test.sock",
+            model="claude-3-opus",
+            api_key="test-key",
+        )
+        cli()
+
+        mock_server_cls.assert_called_once_with(mock_config)
+
+
 class TestAnthropicMessagesMain:
     """Tests for main function."""
 
@@ -66,6 +164,12 @@ class TestAnthropicMessagesMain:
         import inspect
 
         assert inspect.isfunction(main)
+
+    @patch("psi_agent.ai.anthropic_messages.cli.tyro.cli")
+    def test_main_calls_tyro(self, mock_cli: MagicMock) -> None:
+        """Test main calls tyro.cli."""
+        main()
+        mock_cli.assert_called_once_with(AnthropicMessages)
 
 
 class TestAnthropicMessagesDefaults:
