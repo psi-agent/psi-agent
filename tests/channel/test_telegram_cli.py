@@ -18,7 +18,7 @@ class TestTelegramCli:
         assert cli.token == "test-token"
         assert cli.session_socket == "/tmp/test.sock"
         assert cli.proxy is None  # default
-        assert cli.no_stream is False  # default
+        assert cli.stream is True  # default
         assert cli.stream_interval == 1.0  # default
 
     def test_cli_with_proxy(self) -> None:
@@ -31,13 +31,13 @@ class TestTelegramCli:
         assert cli.proxy == "socks5://localhost:1080"
 
     def test_cli_with_no_stream(self) -> None:
-        """Test CLI with no_stream option."""
+        """Test CLI with stream=False option."""
         cli = Telegram(
             token="test-token",
             session_socket="/tmp/test.sock",
-            no_stream=True,
+            stream=False,
         )
-        assert cli.no_stream is True
+        assert cli.stream is False
 
     def test_cli_with_stream_interval(self) -> None:
         """Test CLI with custom stream_interval."""
@@ -54,7 +54,7 @@ class TestTelegramCli:
             token="test-token",
             session_socket="/tmp/test.sock",
             proxy=None,
-            no_stream=False,
+            stream=True,
             stream_interval=1.0,
         )
 
@@ -63,7 +63,7 @@ class TestTelegramCli:
             token=cli.token,
             session_socket=cli.session_socket,
             proxy=cli.proxy,
-            stream=not cli.no_stream,
+            stream=cli.stream,
             stream_interval=cli.stream_interval,
         )
         assert config.token == "test-token"
@@ -96,13 +96,13 @@ class TestTelegramDefaults:
         )
         assert cli.proxy is None
 
-    def test_default_no_stream(self) -> None:
-        """Test default no_stream is False."""
+    def test_default_stream(self) -> None:
+        """Test default stream is True."""
         cli = Telegram(
             token="test-token",
             session_socket="/tmp/test.sock",
         )
-        assert cli.no_stream is False
+        assert cli.stream is True
 
     def test_default_stream_interval(self) -> None:
         """Test default stream_interval is 1.0."""

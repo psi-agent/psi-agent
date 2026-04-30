@@ -46,17 +46,17 @@ class TestCliFlags:
         """Test CLI defaults to streaming enabled."""
         cli = Cli(session_socket="/tmp/test.sock", message="Hello")
 
-        assert cli.no_stream is False
+        assert cli.stream is True
 
     def test_cli_no_stream_flag(self) -> None:
         """Test CLI --no-stream flag disables streaming."""
-        cli = Cli(session_socket="/tmp/test.sock", message="Hello", no_stream=True)
+        cli = Cli(session_socket="/tmp/test.sock", message="Hello", stream=False)
 
-        assert cli.no_stream is True
+        assert cli.stream is False
 
     def test_cli_stream_passed_to_send_message(self) -> None:
         """Test CLI passes correct stream value to send_message."""
-        cli = Cli(session_socket="/tmp/test.sock", message="Hello", no_stream=True)
+        cli = Cli(session_socket="/tmp/test.sock", message="Hello", stream=False)
 
-        # no_stream=True means stream=False
-        assert cli.no_stream is not False
+        # stream=False means non-streaming mode
+        assert cli.stream is False

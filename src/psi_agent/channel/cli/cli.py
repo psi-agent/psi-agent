@@ -117,18 +117,18 @@ class Cli:
 
     session_socket: str
     message: str
-    no_stream: bool = False
-    """Disable streaming mode (default: streaming enabled)."""
+    stream: bool = True
+    """Enable streaming mode (default: streaming enabled)."""
 
     def __call__(self) -> None:
         logger.debug(f"Connecting to session socket: {self.session_socket}")
         logger.debug(f"Sending message: {self.message[:50]}...")
 
-        result = asyncio.run(send_message(self.session_socket, self.message, not self.no_stream))
+        result = asyncio.run(send_message(self.session_socket, self.message, self.stream))
 
         # For non-streaming, print the result
         # For streaming, it's already printed
-        if self.no_stream:
+        if not self.stream:
             print(result)
 
         # Exit with appropriate code
