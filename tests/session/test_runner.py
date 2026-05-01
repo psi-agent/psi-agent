@@ -1014,3 +1014,268 @@ async def tool(message: str) -> str:
                 # Should not crash and should yield content
                 full_content = "".join(chunks)
                 assert "Hello" in full_content
+
+
+class TestParseStreamingResponse:
+    """Tests for _parse_streaming_response helper method."""
+
+    @pytest.mark.asyncio
+    async def test_parse_streaming_yields_content(self, config):
+        """Test _parse_streaming_response yields content chunks."""
+        runner = SessionRunner(config)
+
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b'data: {"choices":[{"delta":{"content":" world"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        results = []
+        async for content, reasoning, tool_calls in runner._parse_streaming_response(mock_response):
+            results.append((content, reasoning, tool_calls))
+
+        assert len(results) == 2
+        assert results[0][0] == "Hello"
+        assert results[0][1] is None
+        assert results[0][2] is None
+        assert results[1][0] == " world"
+
+    @pytest.mark.asyncio
+    async def test_parse_streaming_yields_reasoning(self, config):
+        """Test _parse_streaming_response yields reasoning chunks."""
+        runner = SessionRunner(config)
+
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"reasoning":"Thinking..."}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        results = []
+        async for content, reasoning, tool_calls in runner._parse_streaming_response(mock_response):
+            results.append((content, reasoning, tool_calls))
+
+        assert len(results) == 1
+        assert results[0][0] is None
+        assert results[0][1] == "Thinking..."
+        assert results[0][2] is None
+
+    @pytest.mark.asyncio
+    async def test_parse_streaming_yields_tool_calls(self, config):
+        """Test _parse_streaming_response yields tool_calls chunks."""
+        runner = SessionRunner(config)
+
+        sse_lines = [
+            (
+                b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,'
+                b'"id":"call_1","function":{"name":"bash","arguments":"{"}}]}}]}\n'
+            ),
+            (
+                b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,'
+                b'"function":{"arguments":"}"}}]}}]}\n'
+            ),
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        results = []
+        async for content, reasoning, tool_calls in runner._parse_streaming_response(mock_response):
+            results.append((content, reasoning, tool_calls))
+
+        assert len(results) == 2
+        assert results[0][2] is not None
+        assert len(results[0][2]) == 1
+        assert results[0][2][0]["function"]["name"] == "bash"
+
+    @pytest.mark.asyncio
+    async def test_parse_streaming_skips_empty_lines(self, config):
+        """Test _parse_streaming_response skips empty lines and [DONE]."""
+        runner = SessionRunner(config)
+
+        sse_lines = [
+            b"\n",  # Empty line
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b"",  # Empty bytes
+            b"data: [DONE]\n",
+            b'data: {"choices":[{"delta":{"content":"After"}}]}\n',  # After DONE - still processed
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        results = []
+        async for content, reasoning, tool_calls in runner._parse_streaming_response(mock_response):
+            results.append((content, reasoning, tool_calls))
+
+        # Empty lines and [DONE] marker are skipped, but content after [DONE] is still processed
+        assert len(results) == 2
+        assert results[0][0] == "Hello"
+        assert results[1][0] == "After"
+
+    @pytest.mark.asyncio
+    async def test_parse_streaming_handles_invalid_json(self, config):
+        """Test _parse_streaming_response handles invalid JSON gracefully."""
+        runner = SessionRunner(config)
+
+        sse_lines = [
+            b"data: invalid json\n",
+            b'data: {"choices":[{"delta":{"content":"Valid"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        results = []
+        async for content, reasoning, tool_calls in runner._parse_streaming_response(mock_response):
+            results.append((content, reasoning, tool_calls))
+
+        # Invalid JSON should be skipped, valid JSON should be parsed
+        assert len(results) == 1
+        assert results[0][0] == "Valid"
+
+    @pytest.mark.asyncio
+    async def test_parse_streaming_handles_null_content(self, config):
+        """Test _parse_streaming_response handles null content value."""
+        runner = SessionRunner(config)
+
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"content":null}}]}\n',
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        results = []
+        async for content, reasoning, tool_calls in runner._parse_streaming_response(mock_response):
+            results.append((content, reasoning, tool_calls))
+
+        assert len(results) == 2
+        assert results[0][0] is None
+        assert results[1][0] == "Hello"
+
+    @pytest.mark.asyncio
+    async def test_parse_streaming_handles_null_tool_calls(self, config):
+        """Test _parse_streaming_response handles null tool_calls value."""
+        runner = SessionRunner(config)
+
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"content":"Hello","tool_calls":null}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        results = []
+        async for content, reasoning, tool_calls in runner._parse_streaming_response(mock_response):
+            results.append((content, reasoning, tool_calls))
+
+        assert len(results) == 1
+        assert results[0][0] == "Hello"
+        assert results[0][2] is None
+
+    @pytest.mark.asyncio
+    async def test_parse_streaming_handles_all_fields(self, config):
+        """Test _parse_streaming_response handles content, reasoning, and tool_calls together."""
+        runner = SessionRunner(config)
+
+        sse_lines = [
+            (
+                b'data: {"choices":[{"delta":{"content":"Hi","reasoning":"Think",'
+                b'"tool_calls":[{"index":0,"id":"call_1","function":{"name":"bash","arguments":""}}]}}]}\n'
+            ),
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        results = []
+        async for content, reasoning, tool_calls in runner._parse_streaming_response(mock_response):
+            results.append((content, reasoning, tool_calls))
+
+        assert len(results) == 1
+        assert results[0][0] == "Hi"
+        assert results[0][1] == "Think"
+        assert results[0][2] is not None
+        assert len(results[0][2]) == 1
+
+    @pytest.mark.asyncio
+    async def test_parse_streaming_handles_missing_choices(self, config):
+        """Test _parse_streaming_response handles missing choices array."""
+        runner = SessionRunner(config)
+
+        sse_lines = [
+            b"data: {}\n",
+            b'data: {"choices":[]}\n',
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        results = []
+        async for content, reasoning, tool_calls in runner._parse_streaming_response(mock_response):
+            results.append((content, reasoning, tool_calls))
+
+        # Empty choices should yield None values
+        assert len(results) == 3
+        assert results[0][0] is None
+        assert results[1][0] is None
+        assert results[2][0] == "Hello"
