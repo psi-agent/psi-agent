@@ -84,6 +84,7 @@ async def execute_tools_parallel(
         tool_call_ids.append(call_id)
 
     # Execute in parallel
+    logger.debug(f"Executing {len(tasks)} tools in parallel")
     results = await asyncio.gather(*tasks)
 
     # Format as tool result messages
