@@ -10,7 +10,24 @@ from loguru import logger
 
 
 class ManifestParseError(Exception):
-    """Raised when manifest JSON parsing fails."""
+    """Raised when manifest JSON parsing fails.
+
+    Attributes:
+        message: Human-readable error description.
+        details: Optional additional context about the parse failure.
+    """
+
+    def __init__(self, message: str, details: str | None = None) -> None:
+        """Initialize the error with message and optional details.
+
+        Args:
+            message: Human-readable error description.
+            details: Optional additional context about the parse failure.
+        """
+        self.message = message
+        self.details = details
+        full_message = f"{message}" if details is None else f"{message}: {details}"
+        super().__init__(full_message)
 
 
 @dataclass

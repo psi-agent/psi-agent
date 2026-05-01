@@ -83,10 +83,12 @@ class AnthropicMessagesClient:
             raise RuntimeError("Client not initialized. Use async context manager.")
 
         # Inject model if not present or if it's the session placeholder
-        if "model" not in request_body or request_body["model"] == "session":
+        model = request_body.get("model")
+        if model is None or model == "session":
             request_body["model"] = self.config.model
+            model = self.config.model
 
-        logger.info(f"Sending request to Anthropic API with model {request_body['model']}")
+        logger.info(f"Sending request to Anthropic API with model {model}")
         logger.debug("Request headers: x-api-key=*** (hidden)")
         body_summary = {
             k: v if k != "messages" else f"[{len(v)} messages]" for k, v in request_body.items()
