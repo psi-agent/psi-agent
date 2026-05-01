@@ -71,3 +71,11 @@ indent-style = "space"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.ty.environment]
+extra-paths = ["tests"]
+
+[tool.ty.rules]
+# Ignore type errors in test files for mock assignments
+invalid-assignment = { ignore = ["tests/**/*.py"] }
+unresolved-attribute = { ignore = ["tests/**/*.py"] }
