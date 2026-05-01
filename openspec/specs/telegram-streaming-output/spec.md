@@ -14,11 +14,6 @@ The Telegram channel SHALL support streaming output by editing messages in real-
 - **THEN** the channel SHALL edit the previously sent message with new content
 - **AND** accumulate content across multiple edits
 
-#### Scenario: First chunk sends initial message
-- **WHEN** the first streaming chunk arrives
-- **THEN** the channel SHALL send a new message to Telegram
-- **AND** subsequent chunks SHALL edit this message
-
 ### Requirement: Telegram channel buffers streaming chunks by time interval
 
 The Telegram channel SHALL buffer streaming chunks and update messages at configurable time intervals to avoid API rate limits.
@@ -86,6 +81,29 @@ The Telegram channel SHALL handle streaming messages that exceed Telegram's 4096
 - **WHEN** streaming completes and total content exceeds 4096 characters
 - **THEN** the channel SHALL split the complete content into multiple messages
 - **AND** use existing `split_message()` function for splitting
+
+### Requirement: Telegram streaming placeholder indicates incomplete content
+
+The Telegram channel SHALL display a placeholder that indicates content is still being generated, only when content has been received.
+
+#### Scenario: First message sent when first chunk arrives
+- **WHEN** the first streaming chunk arrives
+- **THEN** the channel SHALL send a new message with the chunk content appended with "..."
+- **AND** subsequent chunks SHALL edit this message
+
+#### Scenario: Non-empty buffer shows content with placeholder suffix
+- **WHEN** streaming is in progress and buffer contains content
+- **THEN** the channel SHALL display the buffered content truncated to fit
+- **AND** append "..." to indicate more content is coming
+- **AND** reserve 3 characters for the placeholder suffix when truncating
+
+#### Scenario: Final message removes placeholder
+- **WHEN** streaming completes
+- **THEN** the channel SHALL display the complete content without the "..." suffix
+
+#### Scenario: Empty response sends fallback message
+- **WHEN** streaming completes with no content received
+- **THEN** the channel SHALL send a message with just "..."
 
 ### Requirement: Telegram streaming output includes typing indicator
 
