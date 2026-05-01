@@ -128,6 +128,189 @@ class TestTranslateOpenAIToAnthropic:
 
         assert result["max_tokens"] == 2048
 
+    def test_tools_translation_openai_format(self) -> None:
+        """Test OpenAI tools format is translated to Anthropic format."""
+        openai_request = {
+            "messages": [{"role": "user", "content": "Hello"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "bash",
+                        "description": "Execute a bash command",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"command": {"type": "string", "description": "Command"}},
+                            "required": ["command"],
+                        },
+                    },
+                }
+            ],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert "tools" in result
+        assert len(result["tools"]) == 1
+        tool = result["tools"][0]
+        assert tool["name"] == "bash"
+        assert tool["description"] == "Execute a bash command"
+        assert "input_schema" in tool
+        assert tool["input_schema"]["type"] == "object"
+        assert "parameters" not in tool
+        assert "function" not in tool
+
+    def test_tools_passthrough_anthropic_format(self) -> None:
+        """Test tools already in Anthropic format are passed through."""
+        openai_request = {
+            "messages": [{"role": "user", "content": "Hello"}],
+            "tools": [
+                {
+                    "name": "bash",
+                    "description": "Execute a bash command",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {"command": {"type": "string", "description": "Command"}},
+                        "required": ["command"],
+                    },
+                }
+            ],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert "tools" in result
+        assert result["tools"][0]["name"] == "bash"
+        assert "input_schema" in result["tools"][0]
+
+    def test_tools_without_description(self) -> None:
+        """Test tools without description field."""
+        openai_request = {
+            "messages": [{"role": "user", "content": "Hello"}],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "simple_tool",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert result["tools"][0]["name"] == "simple_tool"
+        assert "description" not in result["tools"][0]
+
+    def test_no_tools_parameter(self) -> None:
+        """Test request without tools parameter."""
+        openai_request = {
+            "messages": [{"role": "user", "content": "Hello"}],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert "tools" not in result
+
+    def test_tool_result_message_translation(self) -> None:
+        """Test tool result message is translated to Anthropic format."""
+        openai_request = {
+            "messages": [
+                {"role": "user", "content": "What is the date?"},
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_123",
+                            "type": "function",
+                            "function": {"name": "bash", "arguments": '{"command": "date"}'},
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_123",
+                    "content": "Mon May  1 13:48:07 CST 2026",
+                },
+            ],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert len(result["messages"]) == 3
+        # Check assistant message with tool_calls
+        assistant_msg = result["messages"][1]
+        assert assistant_msg["role"] == "assistant"
+        assert len(assistant_msg["content"]) == 1
+        assert assistant_msg["content"][0]["type"] == "tool_use"
+        assert assistant_msg["content"][0]["id"] == "call_123"
+        assert assistant_msg["content"][0]["name"] == "bash"
+        assert assistant_msg["content"][0]["input"] == {"command": "date"}
+
+        # Check tool result message
+        tool_msg = result["messages"][2]
+        assert tool_msg["role"] == "user"
+        assert len(tool_msg["content"]) == 1
+        assert tool_msg["content"][0]["type"] == "tool_result"
+        assert tool_msg["content"][0]["tool_use_id"] == "call_123"
+        assert tool_msg["content"][0]["content"] == "Mon May  1 13:48:07 CST 2026"
+
+    def test_assistant_message_with_tool_calls_and_text(self) -> None:
+        """Test assistant message with both text and tool_calls."""
+        openai_request = {
+            "messages": [
+                {"role": "user", "content": "Hello"},
+                {
+                    "role": "assistant",
+                    "content": "Let me check that.",
+                    "tool_calls": [
+                        {
+                            "id": "call_456",
+                            "type": "function",
+                            "function": {"name": "read", "arguments": '{"file": "test.txt"}'},
+                        }
+                    ],
+                },
+            ],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assistant_msg = result["messages"][1]
+        assert assistant_msg["role"] == "assistant"
+        # Should have text block and tool_use block
+        assert len(assistant_msg["content"]) == 2
+        # Find text block
+        text_blocks = [b for b in assistant_msg["content"] if b.get("type") == "text"]
+        assert len(text_blocks) == 1
+        assert text_blocks[0]["text"] == "Let me check that."
+        # Find tool_use block
+        tool_blocks = [b for b in assistant_msg["content"] if b.get("type") == "tool_use"]
+        assert len(tool_blocks) == 1
+        assert tool_blocks[0]["name"] == "read"
+
+    def test_tool_result_with_non_string_content(self) -> None:
+        """Test tool result with non-string content is converted."""
+        openai_request = {
+            "messages": [
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_789",
+                    "content": {"result": "success"},  # dict, not string
+                },
+            ],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        tool_msg = result["messages"][0]
+        assert tool_msg["role"] == "user"
+        assert tool_msg["content"][0]["type"] == "tool_result"
+        # Content should be converted to string
+        assert "result" in tool_msg["content"][0]["content"]
+
 
 class TestTranslateAnthropicToOpenAI:
     """Tests for Anthropic to OpenAI response translation."""
@@ -678,3 +861,388 @@ class TestTranslateAnthropicStreamToolCalls:
         assert '"finish_reason": "tool_calls"' in chunks[3]
         # Last chunk is [DONE]
         assert chunks[4] == "data: [DONE]\n\n"
+
+
+class TestStreamingThinkingSupport:
+    """Tests for thinking block streaming translation."""
+
+    def test_thinking_block_start_no_output(self) -> None:
+        """Test content_block_start with thinking type returns None."""
+        translator = StreamingTranslator()
+        translator._message_id = "msg_123"
+        translator._model = "claude-3"
+
+        result = translator.translate_event(
+            "content_block_start",
+            {
+                "index": 0,
+                "content_block": {
+                    "type": "thinking",
+                    "thinking": "",
+                    "signature": "",
+                },
+            },
+        )
+
+        assert result is None
+
+    def test_thinking_delta_produces_reasoning_content(self) -> None:
+        """Test thinking_delta event produces reasoning_content chunk."""
+        translator = StreamingTranslator()
+        translator._message_id = "msg_123"
+        translator._model = "claude-3"
+
+        result = translator.translate_event(
+            "content_block_delta",
+            {
+                "index": 0,
+                "delta": {
+                    "type": "thinking_delta",
+                    "thinking": "Let me think about this...",
+                },
+            },
+        )
+
+        assert result is not None
+        assert '"reasoning_content": "Let me think about this..."' in result
+
+    def test_signature_delta_no_output(self) -> None:
+        """Test signature_delta event produces no output."""
+        translator = StreamingTranslator()
+        translator._message_id = "msg_123"
+        translator._model = "claude-3"
+
+        result = translator.translate_event(
+            "content_block_delta",
+            {
+                "index": 0,
+                "delta": {
+                    "type": "signature_delta",
+                    "signature": "abc123",
+                },
+            },
+        )
+
+        assert result is None
+
+    def test_redacted_thinking_block_start_skipped(self) -> None:
+        """Test redacted_thinking block start is skipped and tracked."""
+        translator = StreamingTranslator()
+        translator._message_id = "msg_123"
+        translator._model = "claude-3"
+
+        result = translator.translate_event(
+            "content_block_start",
+            {
+                "index": 0,
+                "content_block": {
+                    "type": "redacted_thinking",
+                    "data": "encrypted",
+                },
+            },
+        )
+
+        assert result is None
+        assert 0 in translator._redacted_indices
+
+    def test_redacted_thinking_delta_skipped(self) -> None:
+        """Test delta for redacted_thinking block is skipped."""
+        translator = StreamingTranslator()
+        translator._message_id = "msg_123"
+        translator._model = "claude-3"
+        # Mark index 0 as redacted
+        translator._redacted_indices.add(0)
+
+        result = translator.translate_event(
+            "content_block_delta",
+            {
+                "index": 0,
+                "delta": {
+                    "type": "thinking_delta",
+                    "thinking": "should be skipped",
+                },
+            },
+        )
+
+        assert result is None
+
+    def test_content_block_stop_clears_redacted_index(self) -> None:
+        """Test content_block_stop clears redacted thinking index."""
+        translator = StreamingTranslator()
+        translator._redacted_indices.add(0)
+
+        result = translator.translate_event(
+            "content_block_stop",
+            {"index": 0},
+        )
+
+        assert result is None
+        assert 0 not in translator._redacted_indices
+
+    def test_multiple_thinking_deltas(self) -> None:
+        """Test multiple thinking_delta events produce separate chunks."""
+        translator = StreamingTranslator()
+        translator._message_id = "msg_123"
+        translator._model = "claude-3"
+
+        result1 = translator.translate_event(
+            "content_block_delta",
+            {
+                "index": 0,
+                "delta": {
+                    "type": "thinking_delta",
+                    "thinking": "First thought",
+                },
+            },
+        )
+
+        result2 = translator.translate_event(
+            "content_block_delta",
+            {
+                "index": 0,
+                "delta": {
+                    "type": "thinking_delta",
+                    "thinking": "Second thought",
+                },
+            },
+        )
+
+        assert result1 is not None
+        assert result2 is not None
+        assert '"reasoning_content": "First thought"' in result1
+        assert '"reasoning_content": "Second thought"' in result2
+
+    def test_text_delta_with_type_discriminator(self) -> None:
+        """Test text_delta with proper type discriminator."""
+        translator = StreamingTranslator()
+        translator._message_id = "msg_123"
+        translator._model = "claude-3"
+
+        result = translator.translate_event(
+            "content_block_delta",
+            {
+                "index": 0,
+                "delta": {
+                    "type": "text_delta",
+                    "text": "Hello world",
+                },
+            },
+        )
+
+        assert result is not None
+        assert '"content": "Hello world"' in result
+
+    def test_empty_text_delta_no_output(self) -> None:
+        """Test text_delta with empty text produces no output."""
+        translator = StreamingTranslator()
+        translator._message_id = "msg_123"
+        translator._model = "claude-3"
+
+        result = translator.translate_event(
+            "content_block_delta",
+            {
+                "index": 0,
+                "delta": {
+                    "type": "text_delta",
+                    "text": "",
+                },
+            },
+        )
+
+        assert result is None
+
+    def test_empty_thinking_delta_no_output(self) -> None:
+        """Test thinking_delta with empty thinking produces no output."""
+        translator = StreamingTranslator()
+        translator._message_id = "msg_123"
+        translator._model = "claude-3"
+
+        result = translator.translate_event(
+            "content_block_delta",
+            {
+                "index": 0,
+                "delta": {
+                    "type": "thinking_delta",
+                    "thinking": "",
+                },
+            },
+        )
+
+        assert result is None
+
+
+class TestTranslateAnthropicStreamThinking:
+    """Tests for async stream translation with thinking content."""
+
+    async def test_stream_with_thinking_then_text(self) -> None:
+        """Test full stream with thinking followed by text."""
+        import json
+
+        async def mock_stream() -> AsyncGenerator[str]:
+            # message_start event
+            msg_start = json.dumps({"message": {"id": "msg_123", "model": "claude-3"}})
+            yield f"event: message_start\ndata: {msg_start}\n\n"
+            # thinking block start
+            thinking_start = json.dumps(
+                {
+                    "index": 0,
+                    "content_block": {
+                        "type": "thinking",
+                        "thinking": "",
+                        "signature": "",
+                    },
+                }
+            )
+            yield f"event: content_block_start\ndata: {thinking_start}\n\n"
+            # thinking_delta
+            thinking_delta = json.dumps(
+                {
+                    "index": 0,
+                    "delta": {
+                        "type": "thinking_delta",
+                        "thinking": "Let me analyze this...",
+                    },
+                }
+            )
+            yield f"event: content_block_delta\ndata: {thinking_delta}\n\n"
+            # signature_delta
+            sig_delta = json.dumps(
+                {
+                    "index": 0,
+                    "delta": {
+                        "type": "signature_delta",
+                        "signature": "sig123",
+                    },
+                }
+            )
+            yield f"event: content_block_delta\ndata: {sig_delta}\n\n"
+            # thinking block stop
+            yield 'event: content_block_stop\ndata: {"index": 0}\n\n'
+            # text block start
+            text_start = json.dumps(
+                {
+                    "index": 1,
+                    "content_block": {
+                        "type": "text",
+                        "text": "",
+                    },
+                }
+            )
+            yield f"event: content_block_start\ndata: {text_start}\n\n"
+            # text_delta
+            text_delta = json.dumps(
+                {
+                    "index": 1,
+                    "delta": {
+                        "type": "text_delta",
+                        "text": "The answer is 42.",
+                    },
+                }
+            )
+            yield f"event: content_block_delta\ndata: {text_delta}\n\n"
+            # text block stop
+            yield 'event: content_block_stop\ndata: {"index": 1}\n\n'
+            # message_delta with end_turn
+            msg_delta = json.dumps({"delta": {"stop_reason": "end_turn"}})
+            yield f"event: message_delta\ndata: {msg_delta}\n\n"
+            # message_stop event
+            yield "event: message_stop\ndata: {}\n\n"
+
+        chunks = []
+        async for chunk in translate_anthropic_stream(mock_stream()):
+            chunks.append(chunk)
+
+        # Should have: message_start, thinking_delta, text_delta, message_delta, message_stop
+        assert len(chunks) == 5
+        # Check reasoning_content in thinking chunk
+        assert '"reasoning_content": "Let me analyze this..."' in chunks[1]
+        # Check content in text chunk
+        assert '"content": "The answer is 42."' in chunks[2]
+        # Check finish reason
+        assert '"finish_reason": "stop"' in chunks[3]
+        # Last chunk is [DONE]
+        assert chunks[4] == "data: [DONE]\n\n"
+
+    async def test_stream_with_tool_calls_and_thinking(self) -> None:
+        """Test full stream with thinking and tool calls mixed."""
+        import json
+
+        async def mock_stream() -> AsyncGenerator[str]:
+            # message_start event
+            msg_start = json.dumps({"message": {"id": "msg_123", "model": "claude-3"}})
+            yield f"event: message_start\ndata: {msg_start}\n\n"
+            # thinking block start
+            thinking_start = json.dumps(
+                {
+                    "index": 0,
+                    "content_block": {
+                        "type": "thinking",
+                        "thinking": "",
+                        "signature": "",
+                    },
+                }
+            )
+            yield f"event: content_block_start\ndata: {thinking_start}\n\n"
+            # thinking_delta
+            thinking_delta = json.dumps(
+                {
+                    "index": 0,
+                    "delta": {
+                        "type": "thinking_delta",
+                        "thinking": "I need to use a tool...",
+                    },
+                }
+            )
+            yield f"event: content_block_delta\ndata: {thinking_delta}\n\n"
+            # thinking block stop
+            yield 'event: content_block_stop\ndata: {"index": 0}\n\n'
+            # tool_use block start
+            tool_start = json.dumps(
+                {
+                    "index": 1,
+                    "content_block": {
+                        "type": "tool_use",
+                        "id": "toolu_123",
+                        "name": "bash",
+                        "input": {},
+                    },
+                }
+            )
+            yield f"event: content_block_start\ndata: {tool_start}\n\n"
+            # input_json_delta
+            tool_delta = json.dumps(
+                {
+                    "index": 1,
+                    "delta": {
+                        "type": "input_json_delta",
+                        "partial_json": '{"command": "ls"}',
+                    },
+                }
+            )
+            yield f"event: content_block_delta\ndata: {tool_delta}\n\n"
+            # tool block stop
+            yield 'event: content_block_stop\ndata: {"index": 1}\n\n'
+            # message_delta with tool_use stop_reason
+            msg_delta = json.dumps({"delta": {"stop_reason": "tool_use"}})
+            yield f"event: message_delta\ndata: {msg_delta}\n\n"
+            # message_stop event
+            yield "event: message_stop\ndata: {}\n\n"
+
+        chunks = []
+        async for chunk in translate_anthropic_stream(mock_stream()):
+            chunks.append(chunk)
+
+        # Should have: message_start, thinking_delta, tool_use start, input_json_delta,
+        # message_delta, message_stop
+        assert len(chunks) == 6
+        # Check reasoning_content in thinking chunk
+        assert '"reasoning_content": "I need to use a tool..."' in chunks[1]
+        # Check tool_calls in third chunk
+        assert '"tool_calls"' in chunks[2]
+        assert '"bash"' in chunks[2]
+        # Check arguments in fourth chunk
+        assert '"arguments"' in chunks[3]
+        # Check finish reason
+        assert '"finish_reason": "tool_calls"' in chunks[4]
+        # Last chunk is [DONE]
+        assert chunks[5] == "data: [DONE]\n\n"
