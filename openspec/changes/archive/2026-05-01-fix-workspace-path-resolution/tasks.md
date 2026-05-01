@@ -31,7 +31,7 @@
 
 ## 6. Verification
 
-- [ ] 6.1 Run `uv run ruff check` to verify lint passes
-- [ ] 6.2 Run `uv run ruff format` to verify formatting
-- [ ] 6.3 Run `uv run ty check` to verify type checking passes
-- [ ] 6.4 Run `uv run pytest` to verify all tests pass
+- [x] 6.1 Run `uv run ruff check` to verify lint passes
+- [x] 6.2 Run `uv run ruff format` to verify formatting
+- [x] 6.3 Run `uv run ty check` to verify type checking passes
+- [x] 6.4 Run `uv run pytest` to verify all tests pass

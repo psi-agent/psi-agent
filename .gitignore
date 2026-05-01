@@ -33,3 +33,4 @@ junit.xml
 # Worktree
 
 worktree/
+.claude/worktrees/

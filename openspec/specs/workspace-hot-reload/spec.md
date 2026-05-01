@@ -1,4 +1,8 @@
-## ADDED Requirements
+## Purpose
+
+Enable runtime hot-reload of workspace files (tools, skills, schedules) without restarting the session.
+
+## Requirements
 
 ### Requirement: Tool Change Detection
 

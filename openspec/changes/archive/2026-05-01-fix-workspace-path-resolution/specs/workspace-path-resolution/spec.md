@@ -2,7 +2,7 @@
 
 Ensure workspace paths are resolved to absolute paths at session initialization to guarantee consistent file access regardless of current working directory changes.
 
-## Requirements
+## ADDED Requirements
 
 ### Requirement: Workspace path resolution to absolute
 
