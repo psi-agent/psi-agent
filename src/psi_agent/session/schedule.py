@@ -119,13 +119,15 @@ async def load_schedule(task_dir: anyio.Path) -> Schedule | None:
         name = frontmatter.get("name", task_dir.name)
         description = frontmatter.get("description", "")
 
-        return Schedule(
+        schedule = Schedule(
             name=name,
             description=description,
             cron=frontmatter["cron"],
             content=task_content.strip(),
             task_dir=task_dir,
         )
+        logger.debug(f"Loaded schedule: {name} (cron: {frontmatter['cron']})")
+        return schedule
 
     except Exception as e:
         logger.error(f"Failed to load schedule from {task_dir}: {e}")

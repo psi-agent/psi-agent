@@ -149,6 +149,48 @@ class SessionRunner:
         self._schedule_executor: ScheduleExecutor | None = None
         self._system: Any = None  # System instance from workspace
 
+    async def _parse_streaming_response(
+        self, response: aiohttp.ClientResponse
+    ) -> AsyncGenerator[tuple[str | None, str | None, list[dict[str, Any]] | None]]:
+        """Parse streaming response from AI component.
+
+        Yields tuples of (content, reasoning, tool_calls) from each SSE chunk.
+
+        Args:
+            response: HTTP response with streaming content.
+
+        Yields:
+            Tuple of (content, reasoning, tool_calls) from each delta.
+        """
+        async for line in response.content:
+            line_str = line.decode().strip()
+            if not line_str or line_str == "data: [DONE]":
+                continue
+            if line_str.startswith("data: "):
+                try:
+                    chunk = json.loads(line_str[6:])
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+
+                    content = delta.get("content")
+                    reasoning = delta.get("reasoning")
+                    tool_calls = delta.get("tool_calls")
+
+                    if content is not None:
+                        logger.debug(f"Stream content chunk: {content}")
+                    if reasoning is not None:
+                        logger.debug(f"Stream reasoning chunk: {reasoning}")
+                    if tool_calls is not None:
+                        for tc in tool_calls:
+                            func = tc.get("function", {})
+                            name = func.get("name")
+                            args = func.get("arguments")
+                            if name is not None or args is not None:
+                                logger.debug(f"Stream tool_call: name={name}, args={args}")
+
+                    yield content, reasoning, tool_calls
+                except json.JSONDecodeError:
+                    pass
+
     async def __aenter__(self) -> SessionRunner:
         """Initialize session resources."""
         # Initialize history
@@ -380,31 +422,13 @@ class SessionRunner:
                 # Collect streaming response
                 content_chunks = []
                 tool_calls_data = []
-                async for line in response.content:
-                    line_str = line.decode().strip()
-                    if not line_str or line_str == "data: [DONE]":
-                        continue
-                    if line_str.startswith("data: "):
-                        try:
-                            chunk = json.loads(line_str[6:])
-                            delta = chunk.get("choices", [{}])[0].get("delta", {})
-
-                            content = delta.get("content")
-                            if content is not None:
-                                content_chunks.append(content)
-                                logger.debug(f"Stream content chunk: {content}")
-
-                            tool_calls = delta.get("tool_calls")
-                            if tool_calls is not None:
-                                tool_calls_data.extend(tool_calls)
-                                for tc in tool_calls:
-                                    func = tc.get("function", {})
-                                    name = func.get("name")
-                                    args = func.get("arguments")
-                                    if name is not None or args is not None:
-                                        logger.debug(f"Stream tool_call: name={name}, args={args}")
-                        except json.JSONDecodeError:
-                            pass
+                async for content, _reasoning, tool_calls in self._parse_streaming_response(
+                    response
+                ):
+                    if content is not None:
+                        content_chunks.append(content)
+                    if tool_calls is not None:
+                        tool_calls_data.extend(tool_calls)
 
             # Check if we have tool calls
             if tool_calls_data:
@@ -535,6 +559,9 @@ class SessionRunner:
                 "tools": self.registry.list_tools(),
                 "stream": True,
             }
+            logger.debug(
+                f"AI request body: {json.dumps(request_body, ensure_ascii=False, indent=2)}"
+            )
 
             # Call psi-ai with streaming
             async with self.client.post(
@@ -557,50 +584,26 @@ class SessionRunner:
                 # Collect streaming response
                 content_chunks = []
                 tool_calls_data = []
-                async for line in response.content:
-                    line_str = line.decode().strip()
-                    if not line_str or line_str == "data: [DONE]":
-                        continue
-                    if line_str.startswith("data: "):
-                        try:
-                            chunk = json.loads(line_str[6:])
-                            delta = chunk.get("choices", [{}])[0].get("delta", {})
+                async for content, reasoning, tool_calls in self._parse_streaming_response(
+                    response
+                ):
+                    # Stream reasoning field directly if present
+                    if reasoning:
+                        reasoning_data = {
+                            "choices": [{"delta": {"reasoning": reasoning}, "finish_reason": None}]
+                        }
+                        yield f"data: {json.dumps(reasoning_data)}\n\n"
 
-                            # Stream reasoning field directly if present
-                            reasoning = delta.get("reasoning")
-                            if reasoning:
-                                logger.debug(f"Stream reasoning chunk: {reasoning}")
-                                reasoning_data = {
-                                    "choices": [
-                                        {"delta": {"reasoning": reasoning}, "finish_reason": None}
-                                    ]
-                                }
-                                yield f"data: {json.dumps(reasoning_data)}\n\n"
+                    # Stream content field directly if present
+                    if content is not None:
+                        content_chunks.append(content)
+                        content_data = {
+                            "choices": [{"delta": {"content": content}, "finish_reason": None}]
+                        }
+                        yield f"data: {json.dumps(content_data)}\n\n"
 
-                            # Stream content field directly if present
-                            content = delta.get("content")
-                            if content is not None:
-                                content_chunks.append(content)
-                                if content:  # Only log non-empty content
-                                    logger.debug(f"Stream content chunk: {content}")
-                                content_data = {
-                                    "choices": [
-                                        {"delta": {"content": content}, "finish_reason": None}
-                                    ]
-                                }
-                                yield f"data: {json.dumps(content_data)}\n\n"
-
-                            tool_calls = delta.get("tool_calls")
-                            if tool_calls is not None:
-                                tool_calls_data.extend(tool_calls)
-                                for tc in tool_calls:
-                                    func = tc.get("function", {})
-                                    name = func.get("name")
-                                    args = func.get("arguments")
-                                    if name is not None or args is not None:
-                                        logger.debug(f"Stream tool_call: name={name}, args={args}")
-                        except json.JSONDecodeError:
-                            pass
+                    if tool_calls is not None:
+                        tool_calls_data.extend(tool_calls)
 
             # Check if we have tool calls
             if tool_calls_data:
