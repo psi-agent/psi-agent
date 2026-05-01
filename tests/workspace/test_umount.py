@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import anyio
 import pytest
@@ -86,3 +86,86 @@ class TestUmountError:
         """UmountError inherits from Exception."""
         error = UmountError("Test")
         assert isinstance(error, Exception)
+
+
+class TestUmountHelperFunctions:
+    """Tests for umount helper functions."""
+
+    async def test_unmount_failure(self, tmp_path) -> None:
+        """_unmount raises UmountError when umount command fails."""
+        from psi_agent.workspace.umount.api import _unmount as unmount_func
+
+        mount_point = anyio.Path(tmp_path) / "mount"
+        await mount_point.mkdir()
+
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_process = AsyncMock()
+            mock_process.communicate.return_value = (b"", b"Device or resource busy")
+            mock_process.returncode = 1
+            mock_exec.return_value = mock_process
+
+            with pytest.raises(UmountError, match="Failed to unmount"):
+                await unmount_func(mount_point)
+
+    async def test_unmount_success(self, tmp_path) -> None:
+        """_unmount succeeds when umount command succeeds."""
+        from psi_agent.workspace.umount.api import _unmount as unmount_func
+
+        mount_point = anyio.Path(tmp_path) / "mount"
+        await mount_point.mkdir()
+
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_process = AsyncMock()
+            mock_process.communicate.return_value = (b"", b"")
+            mock_process.returncode = 0
+            mock_exec.return_value = mock_process
+
+            # Should not raise
+            await unmount_func(mount_point)
+
+    async def test_cleanup_directory_nonexistent(self, tmp_path) -> None:
+        """_cleanup_directory handles nonexistent directory."""
+        from psi_agent.workspace.umount.api import _cleanup_directory
+
+        nonexistent = anyio.Path(tmp_path) / "nonexistent"
+        # Should not raise
+        await _cleanup_directory(nonexistent)
+
+    async def test_cleanup_directory_with_files(self, tmp_path) -> None:
+        """_cleanup_directory removes directory with files."""
+        from psi_agent.workspace.umount.api import _cleanup_directory
+
+        test_dir = anyio.Path(tmp_path) / "test_dir"
+        await test_dir.mkdir()
+        test_file = test_dir / "test.txt"
+        await test_file.write_text("test content")
+
+        await _cleanup_directory(test_dir)
+
+        assert not await test_dir.exists()
+
+    async def test_cleanup_directory_with_nested_dirs(self, tmp_path) -> None:
+        """_cleanup_directory removes nested directories."""
+        from psi_agent.workspace.umount.api import _cleanup_directory
+
+        test_dir = anyio.Path(tmp_path) / "test_dir"
+        nested_dir = test_dir / "nested"
+        await nested_dir.mkdir(parents=True)
+        nested_file = nested_dir / "file.txt"
+        await nested_file.write_text("nested content")
+
+        await _cleanup_directory(test_dir)
+
+        assert not await test_dir.exists()
+
+    async def test_cleanup_directory_handles_error(self, tmp_path) -> None:
+        """_cleanup_directory handles errors gracefully."""
+        from psi_agent.workspace.umount.api import _cleanup_directory
+
+        test_dir = anyio.Path(tmp_path) / "test_dir"
+        await test_dir.mkdir()
+
+        # Mock iterdir to raise an error
+        with patch.object(anyio.Path, "iterdir", side_effect=PermissionError("denied")):
+            # Should not raise, just log warning
+            await _cleanup_directory(test_dir)

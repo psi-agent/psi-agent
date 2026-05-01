@@ -203,3 +203,163 @@ class TestHandleOther:
         assert response.status == 404
         assert response.text is not None
         assert "Not found" in response.text
+
+
+class TestHandleNonStreaming:
+    """Tests for non-streaming request handling."""
+
+    @pytest.mark.asyncio
+    async def test_handle_non_streaming_success(self, config: OpenAICompletionsConfig) -> None:
+        """Test successful non-streaming response."""
+        server = OpenAICompletionsServer(config)
+
+        mock_client = MagicMock()
+        mock_client.chat_completions = AsyncMock(
+            return_value={
+                "id": "test-id",
+                "choices": [{"message": {"content": "Hello!"}}],
+            }
+        )
+        server.client = mock_client
+
+        response = await server._handle_non_streaming(
+            {"messages": [{"role": "user", "content": "Hi"}]}
+        )
+
+        assert response.status == 200
+        assert response.content_type == "application/json"
+
+    @pytest.mark.asyncio
+    async def test_handle_non_streaming_error_response(
+        self, config: OpenAICompletionsConfig
+    ) -> None:
+        """Test non-streaming request with error response from client."""
+        server = OpenAICompletionsServer(config)
+
+        mock_client = MagicMock()
+        mock_client.chat_completions = AsyncMock(
+            return_value={"error": "API error", "status_code": 429}
+        )
+        server.client = mock_client
+
+        response = await server._handle_non_streaming(
+            {"messages": [{"role": "user", "content": "Hi"}]}
+        )
+
+        assert response.status == 429
+        assert response.text is not None
+        assert "API error" in response.text
+
+    @pytest.mark.asyncio
+    async def test_handle_non_streaming_error_without_status_code(
+        self, config: OpenAICompletionsConfig
+    ) -> None:
+        """Test non-streaming error response without status_code defaults to 500."""
+        server = OpenAICompletionsServer(config)
+
+        mock_client = MagicMock()
+        mock_client.chat_completions = AsyncMock(return_value={"error": "Unknown error"})
+        server.client = mock_client
+
+        response = await server._handle_non_streaming(
+            {"messages": [{"role": "user", "content": "Hi"}]}
+        )
+
+        assert response.status == 500
+
+
+class TestHandleStreaming:
+    """Tests for streaming request handling."""
+
+    @pytest.mark.asyncio
+    async def test_handle_streaming_success(self, config: OpenAICompletionsConfig) -> None:
+        """Test successful streaming response."""
+        server = OpenAICompletionsServer(config)
+
+        async def mock_stream():
+            yield "data: chunk1\n\n"
+            yield "data: [DONE]\n\n"
+
+        mock_client = MagicMock()
+        mock_client.chat_completions = AsyncMock(return_value=mock_stream())
+        server.client = mock_client
+
+        request = MagicMock(spec=web.Request)
+
+        # Mock StreamResponse to avoid actual aiohttp internals
+        with patch("psi_agent.ai.openai_completions.server.web.StreamResponse") as mock_sr:
+            mock_response = MagicMock()
+            mock_response.prepare = AsyncMock()
+            mock_response.write = AsyncMock()
+            mock_response.content_type = "text/event-stream"
+            mock_sr.return_value = mock_response
+
+            response = await server._handle_streaming(
+                request, {"messages": [{"role": "user", "content": "Hi"}], "stream": True}
+            )
+
+            assert response.content_type == "text/event-stream"
+
+
+class TestHandleChatCompletionsWithReasoning:
+    """Tests for chat completions with reasoning parameters."""
+
+    @pytest.mark.asyncio
+    async def test_handle_request_with_thinking(self, config: OpenAICompletionsConfig) -> None:
+        """Test request with thinking parameter."""
+        config = OpenAICompletionsConfig(
+            session_socket="/tmp/test.sock",
+            model="test-model",
+            api_key="test-key",
+            base_url="https://api.example.com/v1",
+            thinking="enabled",
+        )
+        server = OpenAICompletionsServer(config)
+
+        mock_client = MagicMock()
+        mock_client.chat_completions = AsyncMock(
+            return_value={"id": "test", "choices": [{"message": {"content": "Hi"}}]}
+        )
+        server.client = mock_client
+
+        request = MagicMock(spec=web.Request)
+        request.json = AsyncMock(return_value={"messages": [{"role": "user", "content": "Hi"}]})
+
+        response = await server._handle_chat_completions(request)
+        assert response.status == 200
+
+        # Verify thinking was injected
+        call_args = mock_client.chat_completions.call_args[0][0]
+        assert "thinking" in call_args
+        assert call_args["thinking"]["type"] == "enabled"
+
+    @pytest.mark.asyncio
+    async def test_handle_request_with_reasoning_effort(
+        self, config: OpenAICompletionsConfig
+    ) -> None:
+        """Test request with reasoning_effort parameter."""
+        config = OpenAICompletionsConfig(
+            session_socket="/tmp/test.sock",
+            model="test-model",
+            api_key="test-key",
+            base_url="https://api.example.com/v1",
+            reasoning_effort="high",
+        )
+        server = OpenAICompletionsServer(config)
+
+        mock_client = MagicMock()
+        mock_client.chat_completions = AsyncMock(
+            return_value={"id": "test", "choices": [{"message": {"content": "Hi"}}]}
+        )
+        server.client = mock_client
+
+        request = MagicMock(spec=web.Request)
+        request.json = AsyncMock(return_value={"messages": [{"role": "user", "content": "Hi"}]})
+
+        response = await server._handle_chat_completions(request)
+        assert response.status == 200
+
+        # Verify reasoning_effort was injected
+        call_args = mock_client.chat_completions.call_args[0][0]
+        assert "reasoning_effort" in call_args
+        assert call_args["reasoning_effort"] == "high"

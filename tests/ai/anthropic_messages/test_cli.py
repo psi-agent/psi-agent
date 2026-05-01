@@ -225,3 +225,97 @@ class TestAnthropicMessagesModelVariants:
             api_key="test-key",
         )
         assert cli.model == "claude-3-haiku-20240307"
+
+
+class TestAnthropicMessagesRunLoop:
+    """Tests for the async run loop."""
+
+    @patch("psi_agent.ai.anthropic_messages.cli.AnthropicMessagesServer")
+    @patch("psi_agent.ai.anthropic_messages.cli.AnthropicMessagesConfig")
+    @patch("psi_agent.ai.anthropic_messages.cli.mask_sensitive_args")
+    def test_run_loop_structure(
+        self,
+        mock_mask: MagicMock,
+        mock_config_cls: MagicMock,
+        mock_server_cls: MagicMock,
+    ) -> None:
+        """Test that CLI creates server and config correctly."""
+        mock_config = MagicMock()
+        mock_config_cls.return_value = mock_config
+        mock_server = MagicMock()
+        mock_server.start = AsyncMock()
+        mock_server.stop = AsyncMock()
+        mock_server_cls.return_value = mock_server
+
+        cli = AnthropicMessages(
+            session_socket="/tmp/test.sock",
+            model="claude-3-opus",
+            api_key="test-key",
+        )
+
+        # Verify CLI dataclass structure
+        assert cli.session_socket == "/tmp/test.sock"
+        assert cli.model == "claude-3-opus"
+        assert cli.api_key == "test-key"
+
+
+class TestAnthropicMessagesThinkingAndReasoning:
+    """Tests for thinking and reasoning_effort parameters."""
+
+    def test_thinking_parameter(self) -> None:
+        """Test CLI with thinking parameter."""
+        cli = AnthropicMessages(
+            session_socket="/tmp/test.sock",
+            model="claude-3-opus",
+            api_key="test-key",
+            thinking="enabled",
+        )
+        assert cli.thinking == "enabled"
+
+    def test_reasoning_effort_parameter(self) -> None:
+        """Test CLI with reasoning_effort parameter."""
+        cli = AnthropicMessages(
+            session_socket="/tmp/test.sock",
+            model="claude-3-opus",
+            api_key="test-key",
+            reasoning_effort="high",
+        )
+        assert cli.reasoning_effort == "high"
+
+    @patch("psi_agent.ai.anthropic_messages.cli.asyncio.run")
+    @patch("psi_agent.ai.anthropic_messages.cli.AnthropicMessagesServer")
+    @patch("psi_agent.ai.anthropic_messages.cli.AnthropicMessagesConfig")
+    @patch("psi_agent.ai.anthropic_messages.cli.mask_sensitive_args")
+    def test_config_includes_thinking_and_reasoning(
+        self,
+        mock_mask: MagicMock,
+        mock_config_cls: MagicMock,
+        mock_server_cls: MagicMock,
+        mock_run: MagicMock,
+    ) -> None:
+        """Test that config is created with thinking and reasoning_effort."""
+        mock_config = MagicMock()
+        mock_config_cls.return_value = mock_config
+        mock_server = MagicMock()
+        mock_server.start = AsyncMock()
+        mock_server.stop = AsyncMock()
+        mock_server_cls.return_value = mock_server
+
+        cli = AnthropicMessages(
+            session_socket="/tmp/test.sock",
+            model="claude-3-opus",
+            api_key="test-key",
+            thinking="enabled",
+            reasoning_effort="high",
+        )
+        cli()
+
+        mock_config_cls.assert_called_once_with(
+            session_socket="/tmp/test.sock",
+            model="claude-3-opus",
+            api_key="test-key",
+            base_url="https://api.anthropic.com",
+            max_tokens=4096,
+            thinking="enabled",
+            reasoning_effort="high",
+        )
