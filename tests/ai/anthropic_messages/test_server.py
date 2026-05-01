@@ -165,7 +165,9 @@ class TestHandleNonStreaming:
         """Test non-streaming request with error response from client."""
         mock_client = server_with_client.client
         assert mock_client is not None
-        cast(Any, mock_client).messages = AsyncMock(return_value={"error": "API error", "status_code": 429})
+        cast(Any, mock_client).messages = AsyncMock(
+            return_value={"error": "API error", "status_code": 429}
+        )
 
         response = await server_with_client._handle_non_streaming(
             {"messages": [{"role": "user", "content": "Hi"}]}
