@@ -157,8 +157,6 @@ class AnthropicMessagesClient:
                         logger.debug(f"Stream event: {event.type} - {event_json}")
                         yield f"event: {event.type}\ndata: {json.dumps(event_data)}\n\n"
 
-                yield "event: message_stop\ndata: {}\n\n"
-
             # Translate Anthropic events to OpenAI chunks
             async for openai_chunk in translate_anthropic_stream(anthropic_event_stream()):
                 yield openai_chunk

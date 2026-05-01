@@ -499,13 +499,31 @@ class TestAnthropicMessagesClient:
         """Test standard Anthropic events are passed through."""
         from unittest.mock import MagicMock
 
-        # Create mock events for standard types
-        events = []
-        for event_type in ["message_start", "content_block_delta", "message_stop"]:
-            mock_event = MagicMock()
-            mock_event.type = event_type
-            mock_event.model_dump = MagicMock(return_value={"type": event_type, "data": "test"})
-            events.append(mock_event)
+        # Create mock events for standard types with proper structure
+        message_start_event = MagicMock()
+        message_start_event.type = "message_start"
+        message_start_event.model_dump = MagicMock(
+            return_value={
+                "type": "message_start",
+                "message": {"id": "msg_123", "model": "claude-3"},
+            }
+        )
+
+        content_block_delta_event = MagicMock()
+        content_block_delta_event.type = "content_block_delta"
+        content_block_delta_event.model_dump = MagicMock(
+            return_value={
+                "type": "content_block_delta",
+                "index": 0,
+                "delta": {"type": "text_delta", "text": "Hello"},
+            }
+        )
+
+        message_stop_event = MagicMock()
+        message_stop_event.type = "message_stop"
+        message_stop_event.model_dump = MagicMock(return_value={"type": "message_stop"})
+
+        events = [message_start_event, content_block_delta_event, message_stop_event]
 
         # Create async iterator helper
         async def async_iter():
@@ -536,9 +554,17 @@ class TestAnthropicMessagesClient:
                 async for chunk in result:
                     chunks.append(chunk)
 
-                # Should have chunks for message_start, content_block_delta, message_stop
-                # Plus the final message_stop from the generator
-                assert len(chunks) >= 3
+                # Should have chunks for:
+                # 1. message_start (initial chunk with role)
+                # 2. content_block_delta (content chunk)
+                # 3. message_stop ([DONE] marker)
+                assert len(chunks) == 3
+                # First chunk should have role
+                assert '"role": "assistant"' in chunks[0]
+                # Second chunk should have content
+                assert '"content": "Hello"' in chunks[1]
+                # Third chunk should be [DONE]
+                assert chunks[2] == "data: [DONE]\n\n"
 
     @pytest.mark.asyncio
     async def test_streaming_text_event_filtered(self, client: AnthropicMessagesClient) -> None:
