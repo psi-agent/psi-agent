@@ -99,11 +99,13 @@ class System:
                             skill_descriptions.append(f"- {skill_path.name}: {description}")
 
         workspace_resolved = await self._workspace_dir.resolve()
+        skills_dir = workspace_resolved / "skills"
         system_prompt = f"""You are a helpful assistant with access to tools and skills.
 
 ## Workspace
 
 Your workspace directory is: {workspace_resolved}
+All skills are located in: {skills_dir}
 
 ## Available Skills
 
