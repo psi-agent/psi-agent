@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from psi_agent.channel.telegram.bot import TelegramBot, split_message
+from psi_agent.channel.telegram.bot import TYPING_INTERVAL, TelegramBot, split_message
 from psi_agent.channel.telegram.config import TelegramConfig
 
 
@@ -54,6 +55,65 @@ class TestSplitMessage:
         result = split_message(text)
         # The split should happen at or near the newline
         assert len(result) == 2
+        assert "".join(result) == text
+
+    def test_split_at_space(self):
+        """Test split prefers space boundary when no good newline."""
+        # Create text where space is in a good position but newline is not
+        text = "a" * 3000 + " " + "b" * 2000
+        result = split_message(text)
+        # The split should happen at or near the space
+        assert len(result) == 2
+        assert "".join(result) == text
+
+    def test_split_no_good_boundary(self):
+        """Test split at max_length when no good boundary found."""
+        # Create text with no spaces or newlines in second half of first chunk
+        text = "a" * 3000 + "b" * 2000  # No spaces or newlines at all
+        result = split_message(text)
+        assert len(result) == 2
+        # First chunk should be exactly max_length since no good boundary
+        assert len(result[0]) == 4096
+        assert "".join(result) == text
+
+    def test_split_newline_in_first_half(self):
+        """Test split behavior when newline is in first half of chunk."""
+        # Newline at position 1000 (in first half of 4096)
+        text = "a" * 1000 + "\n" + "b" * 4000
+        result = split_message(text)
+        # Since newline is in first half, it won't be used for split
+        assert len(result) == 2
+        assert "".join(result) == text
+
+    def test_split_space_in_first_half(self):
+        """Test split behavior when space is in first half of chunk."""
+        # Space at position 1000 (in first half of 4096), no newline
+        text = "a" * 1000 + " " + "b" * 4000
+        result = split_message(text)
+        # Since space is in first half, it won't be used for split
+        assert len(result) == 2
+        assert "".join(result) == text
+
+    def test_split_newline_in_second_half(self):
+        """Test split uses newline when found in second half of chunk."""
+        # Newline at position 3000 (in second half of 4096)
+        text = "a" * 3000 + "\n" + "b" * 2000
+        result = split_message(text)
+        # Newline should be used for split
+        assert len(result) == 2
+        # First chunk should end with newline (split at newline + 1)
+        assert result[0].endswith("\n")
+        assert "".join(result) == text
+
+    def test_split_space_in_second_half_no_newline(self):
+        """Test split uses space when found in second half and no good newline."""
+        # Space at position 3000 (in second half of 4096), no newline
+        text = "a" * 3000 + " " + "b" * 2000
+        result = split_message(text)
+        # Space should be used for split
+        assert len(result) == 2
+        # First chunk should end with space (split at space + 1)
+        assert result[0].endswith(" ")
         assert "".join(result) == text
 
 
@@ -1142,11 +1202,23 @@ class TestProxyCredentialMasking:
 
     def test_mask_proxy_credentials_exception_handling(self):
         """Test masking handles exceptions gracefully."""
-        # Pass an invalid URL that causes urlparse to behave unexpectedly
-        # This tests the except Exception branch
-        result = TelegramBot._mask_proxy_credentials("://invalid")
-        # Should return original when parsing fails
-        assert result == "://invalid"
+        # We need to trigger an exception in the try block
+        # The easiest way is to mock urlparse to raise an exception
+        with patch("psi_agent.channel.telegram.bot.urlparse") as mock_parse:
+            mock_parse.side_effect = ValueError("Invalid URL")
+            result = TelegramBot._mask_proxy_credentials("any-url")
+            # Should return original when parsing fails
+            assert result == "any-url"
+
+    def test_mask_proxy_credentials_with_only_username(self):
+        """Test masking with only username (no password, no port)."""
+        result = TelegramBot._mask_proxy_credentials("socks5://user@proxy.example.com")
+        assert result == "socks5://***@proxy.example.com"
+
+    def test_mask_proxy_credentials_empty_password(self):
+        """Test masking with empty password."""
+        result = TelegramBot._mask_proxy_credentials("socks5://user:@proxy.example.com:1080")
+        assert result == "socks5://***@proxy.example.com:1080"
 
     def test_mask_proxy_credentials_with_port(self):
         """Test masking with explicit port."""
@@ -1340,3 +1412,123 @@ class TestStreamingEdgeCases:
             async with bot.client:
                 # Should not raise error, exception is caught
                 await bot._handle_message_streaming(mock_update, "telegram:123", "Hello")
+
+    @pytest.mark.asyncio
+    async def test_flush_buffer_empty_buffer_skip(self, config):
+        """Test flush_buffer returns early when content_buffer is empty.
+
+        This tests line 263: the early return when sent_message exists but buffer is empty.
+        """
+        bot = TelegramBot(config)
+
+        mock_message = AsyncMock()
+        mock_message.text = "Hello"
+        mock_message.reply_text = AsyncMock()
+
+        mock_sent_message = AsyncMock()
+        edit_count = 0
+
+        async def mock_edit(_text: str) -> None:
+            nonlocal edit_count
+            edit_count += 1
+
+        mock_sent_message.edit_text = mock_edit
+        mock_message.reply_text.return_value = mock_sent_message
+
+        mock_update = MagicMock()
+        mock_update.message = mock_message
+        mock_update.effective_user = MagicMock(id=123)
+
+        # Mock streaming that sends no chunks but returns content
+        async def mock_stream(_message: str, _user_id: str, on_chunk) -> str:
+            # Don't call on_chunk at all - buffer stays empty during streaming
+            # Wait for periodic flush to trigger with empty buffer
+            await asyncio.sleep(1.5)
+            return "Final content"  # Return content at the end
+
+        with patch.object(bot.client, "send_message_stream", mock_stream):
+            async with bot.client:
+                await bot._handle_message_streaming(mock_update, "telegram:123", "Hello")
+
+        # Should only edit once (final edit with "Final content")
+        # Periodic flushes with empty buffer should skip editing (line 263)
+        assert edit_count == 1
+
+
+class TestTypingIndicatorPeriodically:
+    """Tests for _send_typing_periodically static method."""
+
+    @pytest.mark.asyncio
+    async def test_send_typing_periodically_sends_multiple_times(self):
+        """Test that _send_typing_periodically sends typing indicators at intervals."""
+        mock_chat = AsyncMock()
+        send_count = 0
+
+        async def mock_send_action(_action):
+            nonlocal send_count
+            send_count += 1
+
+        mock_chat.send_action = mock_send_action
+
+        # Create a task that will run the periodic typing
+        task = asyncio.create_task(TelegramBot._send_typing_periodically(mock_chat))
+
+        # Wait for at least 2 typing indicators to be sent (TYPING_INTERVAL * 2 + buffer)
+        await asyncio.sleep(TYPING_INTERVAL * 2 + 0.5)
+
+        # Cancel the task
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+        # Should have sent at least 2 typing indicators
+        assert send_count >= 2
+
+    @pytest.mark.asyncio
+    async def test_send_typing_periodically_handles_exception(self):
+        """Test that _send_typing_periodically handles exceptions gracefully."""
+        mock_chat = AsyncMock()
+        send_count = 0
+
+        async def mock_send_action(_action):
+            nonlocal send_count
+            send_count += 1
+            if send_count == 1:
+                raise Exception("Network error")
+            # Second call succeeds
+
+        mock_chat.send_action = mock_send_action
+
+        # Create a task that will run the periodic typing
+        task = asyncio.create_task(TelegramBot._send_typing_periodically(mock_chat))
+
+        # Wait for at least 2 intervals
+        await asyncio.sleep(TYPING_INTERVAL * 2 + 0.5)
+
+        # Cancel the task
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+        # Should have attempted multiple sends despite the first exception
+        assert send_count >= 2
+
+    @pytest.mark.asyncio
+    async def test_send_typing_periodically_cancelled(self):
+        """Test that _send_typing_periodically can be cancelled cleanly."""
+        mock_chat = AsyncMock()
+        mock_chat.send_action = AsyncMock()
+
+        # Create a task that will run the periodic typing
+        task = asyncio.create_task(TelegramBot._send_typing_periodically(mock_chat))
+
+        # Wait a short time then cancel
+        await asyncio.sleep(0.1)
+        task.cancel()
+
+        # Should handle cancellation gracefully
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+        # Task should be cancelled
+        assert task.cancelled()
