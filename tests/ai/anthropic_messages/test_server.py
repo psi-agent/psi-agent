@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -142,7 +143,8 @@ class TestHandleNonStreaming:
         """Test successful non-streaming response."""
         mock_client = server_with_client.client
         assert mock_client is not None
-        mock_client.messages = AsyncMock(  # type: ignore[assignment]
+        # Use cast to avoid type errors when mocking
+        cast(Any, mock_client).messages = AsyncMock(
             return_value={
                 "id": "test-id",
                 "choices": [{"message": {"content": "Hello!"}}],
@@ -163,7 +165,7 @@ class TestHandleNonStreaming:
         """Test non-streaming request with error response from client."""
         mock_client = server_with_client.client
         assert mock_client is not None
-        mock_client.messages = AsyncMock(return_value={"error": "API error", "status_code": 429})  # type: ignore[assignment]
+        cast(Any, mock_client).messages = AsyncMock(return_value={"error": "API error", "status_code": 429})
 
         response = await server_with_client._handle_non_streaming(
             {"messages": [{"role": "user", "content": "Hi"}]}
@@ -180,7 +182,7 @@ class TestHandleNonStreaming:
         """Test non-streaming error response without status_code defaults to 500."""
         mock_client = server_with_client.client
         assert mock_client is not None
-        mock_client.messages = AsyncMock(return_value={"error": "Unknown error"})  # type: ignore[assignment]
+        cast(Any, mock_client).messages = AsyncMock(return_value={"error": "Unknown error"})
 
         response = await server_with_client._handle_non_streaming(
             {"messages": [{"role": "user", "content": "Hi"}]}
@@ -211,7 +213,7 @@ class TestHandleStreaming:
 
         mock_client = server_with_client.client
         assert mock_client is not None
-        mock_client.messages = AsyncMock(return_value=mock_stream())  # type: ignore[assignment]
+        cast(Any, mock_client).messages = AsyncMock(return_value=mock_stream())
 
         # Mock StreamResponse to avoid actual aiohttp internals
         with patch("psi_agent.ai.anthropic_messages.server.web.StreamResponse") as mock_sr:
@@ -245,7 +247,7 @@ class TestHandleChatCompletionsWithReasoning:
 
         # Mock client
         mock_client = AsyncMock()
-        mock_client.messages = AsyncMock(  # type: ignore[assignment]
+        cast(Any, mock_client).messages = AsyncMock(
             return_value={"id": "test", "choices": [{"message": {"content": "Hi"}}]}
         )
         server.client = mock_client
@@ -276,7 +278,7 @@ class TestHandleChatCompletionsWithReasoning:
 
         # Mock client
         mock_client = AsyncMock()
-        mock_client.messages = AsyncMock(  # type: ignore[assignment]
+        cast(Any, mock_client).messages = AsyncMock(
             return_value={"id": "test", "choices": [{"message": {"content": "Hi"}}]}
         )
         server.client = mock_client
@@ -297,7 +299,7 @@ class TestHandleChatCompletionsWithReasoning:
         """Test handling exception during request processing."""
         # Mock client that raises exception
         mock_client = AsyncMock()
-        mock_client.messages = AsyncMock(side_effect=Exception("Unexpected error"))  # type: ignore[assignment]
+        cast(Any, mock_client).messages = AsyncMock(side_effect=Exception("Unexpected error"))
         server.client = mock_client
 
         request = MagicMock()
