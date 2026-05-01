@@ -36,6 +36,43 @@ The Telegram channel SHALL buffer streaming chunks and update messages at config
 - **WHEN** Telegram channel starts with `--stream-interval 0.5`
 - **THEN** the channel SHALL use 0.5 second as the update interval
 
+### Requirement: Streaming message edits occur at configured interval
+
+The Telegram channel SHALL edit streaming messages at approximately the configured `stream_interval` during an active stream.
+
+#### Scenario: Chunks arrive during streaming
+- **WHEN** streaming is enabled with `stream_interval` set to N seconds
+- **AND** content chunks arrive from the session at arbitrary intervals
+- **THEN** the accumulated buffer SHALL be flushed (message edited) approximately every N seconds
+- **AND** users SHALL see progressive updates to the message during streaming
+
+#### Scenario: Rapid chunks within interval
+- **WHEN** multiple chunks arrive within one `stream_interval` period
+- **THEN** these chunks SHALL be batched together
+- **AND** a single edit SHALL be performed after the interval
+
+#### Scenario: Stream completes with pending buffer
+- **WHEN** the stream completes
+- **AND** there is content remaining in the buffer that hasn't been flushed
+- **THEN** the remaining content SHALL be flushed immediately
+
+#### Scenario: Empty buffer
+- **WHEN** a flush is scheduled but the buffer is empty
+- **THEN** no edit SHALL be performed
+
+### Requirement: Background task manages periodic flushing
+
+The Telegram channel SHALL use a background task to ensure flush operations execute during streaming.
+
+#### Scenario: Background flush task starts with streaming
+- **WHEN** streaming begins
+- **THEN** a background task SHALL start that flushes the buffer every `stream_interval` seconds
+
+#### Scenario: Background flush task stops on stream end
+- **WHEN** streaming ends (successfully or with error)
+- **THEN** the background flush task SHALL be cancelled
+- **AND** a final flush SHALL be performed for any remaining content
+
 ### Requirement: Telegram channel handles long streaming messages
 
 The Telegram channel SHALL handle streaming messages that exceed Telegram's 4096 character limit.
