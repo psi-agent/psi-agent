@@ -6,6 +6,123 @@ import json
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from loguru import logger
+
+
+def _translate_tool_to_anthropic(openai_tool: dict[str, Any]) -> dict[str, Any]:
+    """Translate a single OpenAI tool definition to Anthropic format.
+
+    Args:
+        openai_tool: OpenAI tool definition (may be OpenAI or Anthropic format).
+
+    Returns:
+        Anthropic tool definition.
+    """
+    # Check if already in Anthropic format (has input_schema)
+    if "input_schema" in openai_tool:
+        return openai_tool
+
+    # OpenAI format: {"type": "function", "function": {...}}
+    if openai_tool.get("type") == "function" and "function" in openai_tool:
+        func = openai_tool["function"]
+        anthropic_tool: dict[str, Any] = {
+            "name": func.get("name", ""),
+            "input_schema": func.get("parameters", {"type": "object"}),
+        }
+        if "description" in func:
+            anthropic_tool["description"] = func["description"]
+        return anthropic_tool
+
+    # Unknown format - pass through as-is
+    return openai_tool
+
+
+def _translate_tools_to_anthropic(openai_tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Translate OpenAI tools array to Anthropic format.
+
+    Args:
+        openai_tools: OpenAI tools array.
+
+    Returns:
+        Anthropic tools array.
+    """
+    return [_translate_tool_to_anthropic(tool) for tool in openai_tools]
+
+
+def _translate_message_to_anthropic(msg: dict[str, Any]) -> dict[str, Any] | None:
+    """Translate a single OpenAI message to Anthropic format.
+
+    Args:
+        msg: OpenAI message format.
+
+    Returns:
+        Anthropic message format, or None if system message (should be extracted separately).
+    """
+    role = msg.get("role", "user")
+    content = msg.get("content", "")
+
+    # Handle tool result message: role="tool" -> role="user" with tool_result block
+    if role == "tool":
+        tool_call_id = msg.get("tool_call_id", "")
+        tool_content = msg.get("content", "")
+        # Ensure content is string
+        if not isinstance(tool_content, str):
+            tool_content = str(tool_content) if tool_content is not None else ""
+        return {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": tool_call_id,
+                    "content": tool_content,
+                }
+            ],
+        }
+
+    # Handle assistant message with tool_calls
+    if role == "assistant" and "tool_calls" in msg:
+        tool_calls = msg.get("tool_calls", [])
+        content_blocks: list[dict[str, Any]] = []
+
+        # Add text content if present
+        if content and isinstance(content, str) and content.strip():
+            content_blocks.append({"type": "text", "text": content})
+
+        # Add tool_use blocks
+        for tc in tool_calls:
+            tc_id = tc.get("id", "")
+            tc_function = tc.get("function", {})
+            tc_name = tc_function.get("name", "")
+            tc_args = tc_function.get("arguments", "{}")
+
+            # Parse arguments JSON string to object
+            try:
+                tc_input = json.loads(tc_args) if tc_args else {}
+            except json.JSONDecodeError:
+                tc_input = {}
+
+            content_blocks.append(
+                {
+                    "type": "tool_use",
+                    "id": tc_id,
+                    "name": tc_name,
+                    "input": tc_input,
+                }
+            )
+
+        return {"role": "assistant", "content": content_blocks}
+
+    # Standard message conversion
+    if isinstance(content, str):
+        anthropic_content = [{"type": "text", "text": content}]
+    elif isinstance(content, list):
+        # Already in content block format, pass through
+        anthropic_content = content
+    else:
+        anthropic_content = [{"type": "text", "text": str(content)}]
+
+    return {"role": role, "content": anthropic_content}
+
 
 def translate_openai_to_anthropic(
     openai_request: dict[str, Any], max_tokens: int = 4096
@@ -42,24 +159,18 @@ def translate_openai_to_anthropic(
     if system_content:
         anthropic_request["system"] = system_content
 
-    # Convert messages
+    # Convert messages using the translation helper
     anthropic_messages = []
     for msg in filtered_messages:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-
-        # Convert content to Anthropic format (array of content blocks)
-        if isinstance(content, str):
-            anthropic_content = [{"type": "text", "text": content}]
-        elif isinstance(content, list):
-            # Already in content block format, pass through
-            anthropic_content = content
-        else:
-            anthropic_content = [{"type": "text", "text": str(content)}]
-
-        anthropic_messages.append({"role": role, "content": anthropic_content})
+        translated = _translate_message_to_anthropic(msg)
+        if translated is not None:
+            anthropic_messages.append(translated)
 
     anthropic_request["messages"] = anthropic_messages
+
+    # Translate tools from OpenAI format to Anthropic format
+    if "tools" in openai_request:
+        anthropic_request["tools"] = _translate_tools_to_anthropic(openai_request["tools"])
 
     # Pass through common parameters
     for param in ["model", "max_tokens", "temperature", "stream", "top_p", "stop"]:
@@ -142,12 +253,15 @@ class StreamingTranslator:
         self._model: str = ""
         # Track pending tool calls by index: {index: {"id": str, "name": str}}
         self._pending_tool_calls: dict[int, dict[str, str]] = {}
+        # Track redacted thinking blocks to skip (set of indices)
+        self._redacted_indices: set[int] = set()
 
     def _make_chunk(
         self,
         content: str | None = None,
         finish_reason: str | None = None,
         tool_calls: list[dict[str, Any]] | None = None,
+        reasoning_content: str | None = None,
     ) -> str:
         """Create an OpenAI streaming chunk.
 
@@ -155,6 +269,7 @@ class StreamingTranslator:
             content: The content delta, if any.
             finish_reason: The finish reason, if any.
             tool_calls: Tool calls delta, if any.
+            reasoning_content: Reasoning content delta (for thinking blocks).
 
         Returns:
             SSE formatted chunk string.
@@ -164,6 +279,8 @@ class StreamingTranslator:
             delta["content"] = content
         if tool_calls is not None:
             delta["tool_calls"] = tool_calls
+        if reasoning_content is not None:
+            delta["reasoning_content"] = reasoning_content
 
         chunk = {
             "id": self._message_id,
@@ -198,10 +315,11 @@ class StreamingTranslator:
             return self._make_chunk()
 
         if event_type == "content_block_start":
-            # Check if this is a tool_use block
             content_block = event_data.get("content_block", {})
-            if content_block.get("type") == "tool_use":
-                index = event_data.get("index", 0)
+            block_type = content_block.get("type", "")
+            index = event_data.get("index", 0)
+
+            if block_type == "tool_use":
                 tool_id = content_block.get("id", "")
                 tool_name = content_block.get("name", "")
                 self._pending_tool_calls[index] = {"id": tool_id, "name": tool_name}
@@ -216,19 +334,49 @@ class StreamingTranslator:
                         }
                     ]
                 )
+
+            if block_type == "thinking":
+                # No output needed for thinking block start
+                return None
+
+            if block_type == "redacted_thinking":
+                # Track this index to skip all deltas for it
+                self._redacted_indices.add(index)
+                logger.debug(f"Skipping redacted_thinking block at index {index}")
+                return None
+
+            # Default: text block or other - no output needed
             return None
 
         if event_type == "content_block_delta":
             delta = event_data.get("delta", {})
             index = event_data.get("index", 0)
+            delta_type = delta.get("type", "")
 
-            # Handle text delta
-            text = delta.get("text")
-            if text:
-                return self._make_chunk(content=text)
+            # Skip deltas for redacted thinking blocks
+            if index in self._redacted_indices:
+                return None
+
+            # Handle thinking_delta - emit reasoning_content
+            if delta_type == "thinking_delta":
+                thinking = delta.get("thinking", "")
+                if thinking:
+                    return self._make_chunk(reasoning_content=thinking)
+                return None
+
+            # Handle signature_delta - no output (metadata only)
+            if delta_type == "signature_delta":
+                return None
+
+            # Handle text_delta - emit content
+            if delta_type == "text_delta":
+                text = delta.get("text", "")
+                if text:
+                    return self._make_chunk(content=text)
+                return None
 
             # Handle input_json_delta for tool calls
-            if delta.get("type") == "input_json_delta":
+            if delta_type == "input_json_delta":
                 partial_json = delta.get("partial_json", "")
                 if partial_json and index in self._pending_tool_calls:
                     return self._make_chunk(
@@ -239,6 +387,13 @@ class StreamingTranslator:
                             }
                         ]
                     )
+                return None
+
+            # Backward compatibility: handle raw JSON events without type discriminator
+            text = delta.get("text")
+            if text:
+                return self._make_chunk(content=text)
+
             return None
 
         if event_type == "content_block_stop":
@@ -246,6 +401,8 @@ class StreamingTranslator:
             index = event_data.get("index", 0)
             if index in self._pending_tool_calls:
                 del self._pending_tool_calls[index]
+            # Clean up redacted thinking index if any
+            self._redacted_indices.discard(index)
             return None
 
         if event_type == "message_delta":

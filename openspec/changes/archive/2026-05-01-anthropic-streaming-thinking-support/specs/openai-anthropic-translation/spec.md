@@ -1,4 +1,4 @@
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Translate OpenAI request to Anthropic format
 
@@ -40,22 +40,6 @@ The translator SHALL convert OpenAI chat completions request format to Anthropic
 - **THEN** translator SHALL convert tool_calls to Anthropic tool_use content blocks:
   - Each tool_call becomes a `{"type": "tool_use", "id": ..., "name": ..., "input": ...}` block
   - The `function.arguments` JSON string is parsed as `input` object
-
-### Requirement: Translate Anthropic response to OpenAI format
-
-The translator SHALL convert Anthropic Messages response format to OpenAI chat completions format.
-
-#### Scenario: Non-streaming response translation
-- **WHEN** Anthropic API returns a message response
-- **THEN** translator SHALL convert to OpenAI format with `choices` array containing `message` object
-
-#### Scenario: Content block to text conversion
-- **WHEN** Anthropic response contains content blocks
-- **THEN** translator SHALL extract text from content blocks for OpenAI `message.content`
-
-#### Scenario: Response metadata preservation
-- **WHEN** Anthropic response includes `id`, `model`, `usage`
-- **THEN** translator SHALL include these in OpenAI response format
 
 ### Requirement: Translate streaming events
 
