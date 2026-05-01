@@ -262,3 +262,81 @@ class TestMountError:
         """MountError inherits from Exception."""
         error = MountError("Test")
         assert isinstance(error, Exception)
+
+
+class TestMountWithManifest:
+    """Tests for mount function with manifest handling."""
+
+    async def test_mount_with_valid_manifest(self, tmp_path: anyio.Path) -> None:
+        """Test mount with valid manifest and layer."""
+        tmp = anyio.Path(tmp_path)
+        input_file = tmp / "workspace.squashfs"
+        await input_file.write_bytes(b"fake squashfs")
+        output_dir = tmp / "output"
+
+        # Create a fake squashfs mount with valid manifest
+        from uuid import uuid4
+
+        layer_uuid = uuid4()
+        fake_mount = tmp / "fake_mount"
+        await fake_mount.mkdir()
+        layer_dir = fake_mount / str(layer_uuid)
+        await layer_dir.mkdir()
+        manifest_file = fake_mount / "manifest.json"
+        await manifest_file.write_text(
+            f'{{"layers": {{"{layer_uuid}": {{"tag": "v1.0"}}}}, "default": "{layer_uuid}"}}'
+        )
+
+        with (
+            patch("asyncio.create_subprocess_exec") as mock_exec,
+            patch("psi_agent.workspace.mount.api._create_temp_dir") as mock_temp,
+        ):
+            # Mock temp dir creation to return our fake mount
+            mock_temp.return_value = fake_mount
+
+            # Mock mount subprocess
+            mock_process = AsyncMock()
+            mock_process.communicate.return_value = (b"", b"")
+            mock_process.returncode = 0
+            mock_exec.return_value = mock_process
+
+            await mount(input_file, output_dir)
+
+            # Output directory should be created
+            assert await output_dir.exists()
+
+    async def test_mount_output_dir_created(self, tmp_path: anyio.Path) -> None:
+        """Test mount creates output directory if it doesn't exist."""
+        tmp = anyio.Path(tmp_path)
+        input_file = tmp / "workspace.squashfs"
+        await input_file.write_bytes(b"fake squashfs")
+        output_dir = tmp / "output"
+
+        # Create a fake squashfs mount with valid manifest
+        from uuid import uuid4
+
+        layer_uuid = uuid4()
+        fake_mount = tmp / "fake_mount"
+        await fake_mount.mkdir()
+        layer_dir = fake_mount / str(layer_uuid)
+        await layer_dir.mkdir()
+        manifest_file = fake_mount / "manifest.json"
+        await manifest_file.write_text(
+            f'{{"layers": {{"{layer_uuid}": {{"tag": "v1.0"}}}}, "default": "{layer_uuid}"}}'
+        )
+
+        with (
+            patch("asyncio.create_subprocess_exec") as mock_exec,
+            patch("psi_agent.workspace.mount.api._create_temp_dir") as mock_temp,
+        ):
+            mock_temp.return_value = fake_mount
+
+            mock_process = AsyncMock()
+            mock_process.communicate.return_value = (b"", b"")
+            mock_process.returncode = 0
+            mock_exec.return_value = mock_process
+
+            await mount(input_file, output_dir)
+
+            # Output directory should be created
+            assert await output_dir.exists()

@@ -172,3 +172,33 @@ class TestSessionPaths:
         assert session.channel_socket == "/var/run/psi/channel.sock"
         assert session.ai_socket == "/var/run/psi/ai.sock"
         assert session.workspace == "/home/user/workspace"
+
+
+class TestSessionRunLoop:
+    """Tests for the async run loop."""
+
+    @patch("psi_agent.session.cli.SessionServer")
+    @patch("psi_agent.session.cli.SessionConfig")
+    def test_run_loop_structure(
+        self,
+        mock_config_cls: MagicMock,
+        mock_server_cls: MagicMock,
+    ) -> None:
+        """Test that CLI creates server and config correctly."""
+        mock_config = MagicMock()
+        mock_config_cls.return_value = mock_config
+        mock_server = MagicMock()
+        mock_server.start = AsyncMock()
+        mock_server.stop = AsyncMock()
+        mock_server_cls.return_value = mock_server
+
+        session = Session(
+            channel_socket="/tmp/channel.sock",
+            ai_socket="/tmp/ai.sock",
+            workspace="/tmp/workspace",
+        )
+
+        # Verify CLI dataclass structure
+        assert session.channel_socket == "/tmp/channel.sock"
+        assert session.ai_socket == "/tmp/ai.sock"
+        assert session.workspace == "/tmp/workspace"

@@ -13,22 +13,24 @@ from psi_agent.ai.anthropic_messages.config import AnthropicMessagesConfig
 from psi_agent.ai.anthropic_messages.server import AnthropicMessagesServer
 
 
+@pytest.fixture
+def config() -> AnthropicMessagesConfig:
+    """Create test config."""
+    return AnthropicMessagesConfig(
+        session_socket="/tmp/test_server.sock",
+        model="claude-sonnet-4-20250514",
+        api_key="test-key",
+    )
+
+
+@pytest.fixture
+def server(config: AnthropicMessagesConfig) -> AnthropicMessagesServer:
+    """Create test server."""
+    return AnthropicMessagesServer(config)
+
+
 class TestAnthropicMessagesServer:
     """Tests for AnthropicMessagesServer."""
-
-    @pytest.fixture
-    def config(self) -> AnthropicMessagesConfig:
-        """Create test config."""
-        return AnthropicMessagesConfig(
-            session_socket="/tmp/test_server.sock",
-            model="claude-sonnet-4-20250514",
-            api_key="test-key",
-        )
-
-    @pytest.fixture
-    def server(self, config: AnthropicMessagesConfig) -> AnthropicMessagesServer:
-        """Create test server."""
-        return AnthropicMessagesServer(config)
 
     def test_server_creation(
         self, server: AnthropicMessagesServer, config: AnthropicMessagesConfig
@@ -121,3 +123,191 @@ class TestAnthropicMessagesServer:
 
         server.client.__aexit__.assert_called_once()
         server._runner.cleanup.assert_called_once()
+
+
+class TestHandleNonStreaming:
+    """Tests for non-streaming request handling."""
+
+    @pytest.fixture
+    def server_with_client(self, config: AnthropicMessagesConfig) -> AnthropicMessagesServer:
+        """Create server with mocked client."""
+        server = AnthropicMessagesServer(config)
+        server.client = AsyncMock()
+        return server
+
+    @pytest.mark.asyncio
+    async def test_handle_non_streaming_success(
+        self, server_with_client: AnthropicMessagesServer
+    ) -> None:
+        """Test successful non-streaming response."""
+        mock_client = server_with_client.client
+        assert mock_client is not None
+        mock_client.messages = AsyncMock(  # type: ignore[assignment]
+            return_value={
+                "id": "test-id",
+                "choices": [{"message": {"content": "Hello!"}}],
+            }
+        )
+
+        response = await server_with_client._handle_non_streaming(
+            {"messages": [{"role": "user", "content": "Hi"}]}
+        )
+
+        assert response.status == 200
+        assert response.content_type == "application/json"
+
+    @pytest.mark.asyncio
+    async def test_handle_non_streaming_error_response(
+        self, server_with_client: AnthropicMessagesServer
+    ) -> None:
+        """Test non-streaming request with error response from client."""
+        mock_client = server_with_client.client
+        assert mock_client is not None
+        mock_client.messages = AsyncMock(return_value={"error": "API error", "status_code": 429})  # type: ignore[assignment]
+
+        response = await server_with_client._handle_non_streaming(
+            {"messages": [{"role": "user", "content": "Hi"}]}
+        )
+
+        assert response.status == 429
+        assert response.text is not None
+        assert "API error" in response.text
+
+    @pytest.mark.asyncio
+    async def test_handle_non_streaming_error_without_status_code(
+        self, server_with_client: AnthropicMessagesServer
+    ) -> None:
+        """Test non-streaming error response without status_code defaults to 500."""
+        mock_client = server_with_client.client
+        assert mock_client is not None
+        mock_client.messages = AsyncMock(return_value={"error": "Unknown error"})  # type: ignore[assignment]
+
+        response = await server_with_client._handle_non_streaming(
+            {"messages": [{"role": "user", "content": "Hi"}]}
+        )
+
+        assert response.status == 500
+
+
+class TestHandleStreaming:
+    """Tests for streaming request handling."""
+
+    @pytest.fixture
+    def server_with_client(self, config: AnthropicMessagesConfig) -> AnthropicMessagesServer:
+        """Create server with mocked client."""
+        server = AnthropicMessagesServer(config)
+        server.client = AsyncMock()
+        return server
+
+    @pytest.mark.asyncio
+    async def test_handle_streaming_success(
+        self, server_with_client: AnthropicMessagesServer
+    ) -> None:
+        """Test successful streaming response."""
+
+        async def mock_stream():
+            yield "data: chunk1\n\n"
+            yield "data: [DONE]\n\n"
+
+        mock_client = server_with_client.client
+        assert mock_client is not None
+        mock_client.messages = AsyncMock(return_value=mock_stream())  # type: ignore[assignment]
+
+        # Mock StreamResponse to avoid actual aiohttp internals
+        with patch("psi_agent.ai.anthropic_messages.server.web.StreamResponse") as mock_sr:
+            mock_response = MagicMock()
+            mock_response.prepare = AsyncMock()
+            mock_response.write = AsyncMock()
+            mock_response.content_type = "text/event-stream"
+            mock_sr.return_value = mock_response
+
+            request = MagicMock()
+            response = await server_with_client._handle_streaming(
+                request, {"messages": [{"role": "user", "content": "Hi"}], "stream": True}
+            )
+
+            assert response.content_type == "text/event-stream"
+
+
+class TestHandleChatCompletionsWithReasoning:
+    """Tests for chat completions with reasoning parameters."""
+
+    @pytest.mark.asyncio
+    async def test_handle_request_with_thinking(self, config: AnthropicMessagesConfig) -> None:
+        """Test request with thinking parameter."""
+        config = AnthropicMessagesConfig(
+            session_socket="/tmp/test.sock",
+            model="claude-sonnet-4-20250514",
+            api_key="test-key",
+            thinking="enabled",
+        )
+        server = AnthropicMessagesServer(config)
+
+        # Mock client
+        mock_client = AsyncMock()
+        mock_client.messages = AsyncMock(  # type: ignore[assignment]
+            return_value={"id": "test", "choices": [{"message": {"content": "Hi"}}]}
+        )
+        server.client = mock_client
+
+        request = MagicMock()
+        request.json = AsyncMock(return_value={"messages": [{"role": "user", "content": "Hi"}]})
+
+        response = await server._handle_chat_completions(request)
+        assert response.status == 200
+
+        # Verify thinking was injected
+        call_args = mock_client.messages.call_args[0][0]
+        assert "thinking" in call_args
+        assert call_args["thinking"]["type"] == "enabled"
+
+    @pytest.mark.asyncio
+    async def test_handle_request_with_reasoning_effort(
+        self, config: AnthropicMessagesConfig
+    ) -> None:
+        """Test request with reasoning_effort parameter."""
+        config = AnthropicMessagesConfig(
+            session_socket="/tmp/test.sock",
+            model="claude-sonnet-4-20250514",
+            api_key="test-key",
+            reasoning_effort="high",
+        )
+        server = AnthropicMessagesServer(config)
+
+        # Mock client
+        mock_client = AsyncMock()
+        mock_client.messages = AsyncMock(  # type: ignore[assignment]
+            return_value={"id": "test", "choices": [{"message": {"content": "Hi"}}]}
+        )
+        server.client = mock_client
+
+        request = MagicMock()
+        request.json = AsyncMock(return_value={"messages": [{"role": "user", "content": "Hi"}]})
+
+        response = await server._handle_chat_completions(request)
+        assert response.status == 200
+
+        # Verify reasoning_effort was injected
+        call_args = mock_client.messages.call_args[0][0]
+        assert "output_config" in call_args
+        assert call_args["output_config"]["effort"] == "high"
+
+    @pytest.mark.asyncio
+    async def test_handle_request_exception(self, server: AnthropicMessagesServer) -> None:
+        """Test handling exception during request processing."""
+        # Mock client that raises exception
+        mock_client = AsyncMock()
+        mock_client.messages = AsyncMock(side_effect=Exception("Unexpected error"))  # type: ignore[assignment]
+        server.client = mock_client
+
+        request = MagicMock()
+        request.json = AsyncMock(return_value={"messages": [{"role": "user", "content": "Hi"}]})
+
+        response = await server._handle_chat_completions(request)
+        assert response.status == 500
+        # Response is web.Response, not StreamResponse for error cases
+        from aiohttp import web
+
+        assert isinstance(response, web.Response)
+        assert response.text is not None
+        assert "Unexpected error" in response.text
