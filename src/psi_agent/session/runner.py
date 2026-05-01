@@ -253,6 +253,7 @@ class SessionRunner:
         """
         assert self.client is not None
 
+        logger.debug(f"History compaction request with {len(messages)} messages")
         request_body = {
             "model": "session",  # Model is determined by psi-ai
             "messages": messages,
@@ -332,6 +333,9 @@ class SessionRunner:
             # Add history without compaction
             messages.extend(self.history.messages)
 
+        has_system = self._system_prompt_cache is not None
+        history_count = len(self.history.messages)
+        logger.debug(f"Built {len(messages)} msgs, sys={has_system}, hist={history_count}")
         return messages
 
     async def _run_conversation(self, messages: list[dict[str, Any]]) -> dict[str, Any]:
@@ -685,4 +689,6 @@ class SessionRunner:
                 if func.get("arguments") is not None:
                     tool_calls_map[index]["function"]["arguments"] += func["arguments"]
 
-        return list(tool_calls_map.values())
+        result = list(tool_calls_map.values())
+        logger.debug(f"Reconstructed {len(result)} tool calls from {len(tool_calls_data)} chunks")
+        return result
