@@ -66,7 +66,7 @@ src/psi_agent/session/
 | `config.py` | 配置 dataclass，包含 channel_socket、ai_socket、workspace、history_file |
 | `types.py` | 核心数据结构定义 |
 | `server.py` | HTTP server，监听 Unix socket，路由 `/v1/chat/completions` |
-| `runner.py` | 核心运行循环：消息处理、tool call 循环、流式/非流式响应 |
+| `runner.py` | 核心运行循环：消息处理、tool call 循环、流式/非流式响应；含 `_parse_streaming_response` 统一解析 SSE |
 | `tool_loader.py` | 扫描 tools 目录，动态导入，解析 docstring，生成 OpenAI schema |
 | `tool_executor.py` | 执行工具函数，支持并行执行多个 tool calls |
 | `workspace_watcher.py` | MD5 哈希检测文件变更，生成 ChangeSummary |
