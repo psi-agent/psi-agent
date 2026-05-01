@@ -169,7 +169,11 @@ class SessionRunner:
             if line_str.startswith("data: "):
                 try:
                     chunk = json.loads(line_str[6:])
-                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    choices = chunk.get("choices", [])
+                    if not choices:
+                        yield None, None, None
+                        continue
+                    delta = choices[0].get("delta", {})
 
                     content = delta.get("content")
                     reasoning = delta.get("reasoning")
