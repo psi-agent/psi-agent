@@ -6,6 +6,7 @@ import json
 import os
 import tempfile
 from collections.abc import AsyncGenerator
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -359,11 +360,11 @@ class TestSessionServerStartStop:
             assert runner is not None
 
             # Mock the runner's __aexit__
-            runner.__aexit__ = AsyncMock()
+            cast(Any, runner).__aexit__ = AsyncMock()
 
             await server.stop()
 
-            runner.__aexit__.assert_called_once()
+            cast(Any, runner).__aexit__.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_stop_stops_schedule_executor(self, config: SessionConfig) -> None:
