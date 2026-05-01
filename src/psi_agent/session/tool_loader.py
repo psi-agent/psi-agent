@@ -245,6 +245,8 @@ async def load_all_tools(tools_dir: anyio.Path, registry: ToolRegistry) -> None:
         registry: ToolRegistry to populate.
     """
     tool_files = await scan_tools_directory(tools_dir)
+    tool_names = list(tool_files.keys())
+    logger.debug(f"Loading tools from {tools_dir}: {tool_names}")
 
     for _tool_name, (file_path, _) in tool_files.items():
         tool_schema = await load_tool_from_file(file_path)

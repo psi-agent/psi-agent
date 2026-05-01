@@ -141,6 +141,7 @@ class SessionServer:
         async for chunk in stream_gen:
             await response.write(chunk.encode())
 
+        logger.debug("SSE stream completed successfully")
         logger.info("Streaming response completed")
         return response
 
