@@ -1157,3 +1157,186 @@ class TestProxyCredentialMasking:
         """Test masking without explicit port."""
         result = TelegramBot._mask_proxy_credentials("http://user:pass@proxy.example.com")
         assert result == "http://***@proxy.example.com"
+
+
+class TestStreamingEdgeCases:
+    """Tests for streaming edge cases to improve coverage."""
+
+    @pytest.mark.asyncio
+    async def test_flush_buffer_when_sent_message_none(self, config):
+        """Test flush_buffer returns early when sent_message is None."""
+        bot = TelegramBot(config)
+
+        mock_message = AsyncMock()
+        mock_message.text = "Hello"
+        mock_message.reply_text = AsyncMock()
+
+        mock_update = MagicMock()
+        mock_update.message = mock_message
+        mock_update.effective_user = MagicMock(id=123)
+
+        # Make reply_text return None to simulate sent_message being None
+        mock_message.reply_text.return_value = None
+
+        async def mock_stream(_message: str, _user_id: str, on_chunk) -> str:
+            on_chunk("Test")
+            return "Test"
+
+        with patch.object(bot.client, "send_message_stream", mock_stream):
+            async with bot.client:
+                # Should handle gracefully without crashing
+                await bot._handle_message_streaming(mock_update, "telegram:123", "Hello")
+
+    @pytest.mark.asyncio
+    async def test_flush_buffer_edit_exception(self, config):
+        """Test flush_buffer handles edit exceptions."""
+        bot = TelegramBot(config)
+
+        mock_message = AsyncMock()
+        mock_message.text = "Hello"
+        mock_message.reply_text = AsyncMock()
+
+        mock_sent_message = AsyncMock()
+        # Make edit_text raise an exception during periodic flush
+        mock_sent_message.edit_text = AsyncMock(side_effect=Exception("Edit failed"))
+        mock_message.reply_text.return_value = mock_sent_message
+
+        mock_update = MagicMock()
+        mock_update.message = mock_message
+        mock_update.effective_user = MagicMock(id=123)
+
+        async def mock_stream(_message: str, _user_id: str, on_chunk) -> str:
+            on_chunk("Test content")
+            # Wait for periodic flush to trigger
+            await asyncio.sleep(1.5)
+            return "Test content"
+
+        with patch.object(bot.client, "send_message_stream", mock_stream):
+            async with bot.client:
+                # Should not raise error, exception is caught and logged
+                await bot._handle_message_streaming(mock_update, "telegram:123", "Hello")
+
+    @pytest.mark.asyncio
+    async def test_streaming_handler_message_none(self, config):
+        """Test streaming handler returns early when update.message is None."""
+        bot = TelegramBot(config)
+
+        mock_update = MagicMock()
+        mock_update.message = None
+        mock_update.effective_user = MagicMock(id=123)
+
+        async with bot.client:
+            await bot._handle_message_streaming(mock_update, "telegram:123", "Hello")
+
+        # Should return early without error
+
+    @pytest.mark.asyncio
+    async def test_typing_indicator_exception(self, config):
+        """Test streaming handler handles typing indicator exception."""
+        bot = TelegramBot(config)
+
+        mock_message = AsyncMock()
+        mock_message.text = "Hello"
+        mock_message.reply_text = AsyncMock()
+
+        # Make send_action raise an exception
+        mock_chat = AsyncMock()
+        mock_chat.send_action = AsyncMock(side_effect=Exception("Action failed"))
+        mock_message.chat = mock_chat
+
+        mock_sent_message = AsyncMock()
+        mock_sent_message.edit_text = AsyncMock()
+        mock_message.reply_text.return_value = mock_sent_message
+
+        mock_update = MagicMock()
+        mock_update.message = mock_message
+        mock_update.effective_user = MagicMock(id=123)
+
+        async def mock_stream(_message: str, _user_id: str, on_chunk) -> str:
+            on_chunk("Test")
+            return "Test"
+
+        with patch.object(bot.client, "send_message_stream", mock_stream):
+            async with bot.client:
+                # Should not raise error, typing indicator exception is caught
+                await bot._handle_message_streaming(mock_update, "telegram:123", "Hello")
+
+    @pytest.mark.asyncio
+    async def test_long_message_final_edit_exception(self, config):
+        """Test streaming handler handles final edit exception for long messages."""
+        bot = TelegramBot(config)
+
+        mock_message = AsyncMock()
+        mock_message.text = "Hello"
+        mock_message.reply_text = AsyncMock()
+
+        mock_sent_message = AsyncMock()
+        # Make edit_text raise exception for the final edit
+        call_count = 0
+
+        async def edit_side_effect(text: str) -> None:
+            nonlocal call_count
+            call_count += 1
+            # Raise exception only for the final edit (long message case)
+            if len(text) >= 4096 or call_count > 1:
+                raise Exception("Final edit failed")
+
+        mock_sent_message.edit_text.side_effect = edit_side_effect
+        mock_message.reply_text.return_value = mock_sent_message
+
+        mock_update = MagicMock()
+        mock_update.message = mock_message
+        mock_update.effective_user = MagicMock(id=123)
+
+        # Create content longer than TELEGRAM_MAX_MESSAGE_LENGTH
+        long_content = "a" * 5000
+
+        async def mock_stream(_message: str, _user_id: str, on_chunk) -> str:
+            on_chunk(long_content)
+            return long_content
+
+        with patch.object(bot.client, "send_message_stream", mock_stream):
+            async with bot.client:
+                # Should not raise error, exception is caught
+                await bot._handle_message_streaming(mock_update, "telegram:123", "Hello")
+
+    @pytest.mark.asyncio
+    async def test_long_message_additional_send_exception(self, config):
+        """Test streaming handler handles exception when sending additional messages."""
+        bot = TelegramBot(config)
+
+        mock_message = AsyncMock()
+        mock_message.text = "Hello"
+        mock_message.reply_text = AsyncMock()
+
+        mock_sent_message = AsyncMock()
+        mock_sent_message.edit_text = AsyncMock()
+        mock_message.reply_text.return_value = mock_sent_message
+
+        # Make reply_text raise exception for additional messages
+        reply_call_count = 0
+
+        async def reply_side_effect(text: str) -> None:
+            nonlocal reply_call_count
+            reply_call_count += 1
+            # First call is initial message, subsequent calls are for overflow
+            if reply_call_count > 1:
+                raise Exception("Additional message failed")
+
+        mock_message.reply_text.side_effect = reply_side_effect
+
+        mock_update = MagicMock()
+        mock_update.message = mock_message
+        mock_update.effective_user = MagicMock(id=123)
+
+        # Create content longer than TELEGRAM_MAX_MESSAGE_LENGTH
+        long_content = "a" * 5000
+
+        async def mock_stream(_message: str, _user_id: str, on_chunk) -> str:
+            on_chunk(long_content)
+            return long_content
+
+        with patch.object(bot.client, "send_message_stream", mock_stream):
+            async with bot.client:
+                # Should not raise error, exception is caught
+                await bot._handle_message_streaming(mock_update, "telegram:123", "Hello")
