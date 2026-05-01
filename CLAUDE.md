@@ -706,7 +706,27 @@ uv run psi-agent channel repl \
   --session-socket ./channel.sock
 ```
 
-## Git 提交规范
+## Git 工作流规范
+
+### 分支管理
+
+> **⚠️ 禁止直接在 main 分支上工作**
+>
+> 所有变更必须在 feature 分支上进行，通过 Pull Request 合并到 main。
+>
+> **正确流程：**
+> 1. 从 main 创建 feature 分支：`git checkout -b <feature-name>`
+> 2. 在 feature 分支上进行开发和提交
+> 3. 推送 feature 分支：`git push -u origin <feature-name>`
+> 4. 创建 Pull Request
+> 5. 等待 CI 通过后合并
+>
+> **禁止事项：**
+> - 禁止直接在 main 分支上提交
+> - 禁止直接 push 到 main 分支
+> - 禁止绕过 PR 流程
+
+### OpenSpec 归档
 
 > **⚠️ 重要：OpenSpec 归档目录必须提交到 Git**
 >
@@ -718,3 +738,5 @@ uv run psi-agent channel repl \
 > 3. 确保新的 `openspec/specs/` 目录（如有）已添加到暂存区
 >
 > **禁止遗漏归档目录的提交。**
+
+### Git 提交格式
