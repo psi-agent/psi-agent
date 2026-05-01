@@ -106,32 +106,6 @@ class TestOpenAICompletionsClient:
                 assert "[DONE]" in chunks[1]
 
     @pytest.mark.asyncio
-    async def test_model_injection(self, client: OpenAICompletionsClient) -> None:
-        """Test model is injected if not provided."""
-        mock_response = MagicMock()
-        mock_response.id = "chatcmpl-123"
-        mock_response.model_dump = MagicMock(return_value={"id": "chatcmpl-123"})
-
-        with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:
-            mock_instance = AsyncMock()
-            mock_instance.chat.completions.create = AsyncMock(return_value=mock_response)
-            mock_instance.close = AsyncMock()
-            mock_openai.return_value = mock_instance
-
-            async with client:
-                await client.chat_completions(
-                    {
-                        "messages": [{"role": "user", "content": "Hello"}],
-                        "max_tokens": 1024,
-                    },
-                    stream=False,
-                )
-
-                # Check that model was injected
-                call_kwargs = mock_instance.chat.completions.create.call_args
-                assert call_kwargs[1]["model"] == "test-model"
-
-    @pytest.mark.asyncio
     async def test_authentication_error(self, client: OpenAICompletionsClient) -> None:
         """Test authentication error handling."""
         with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:

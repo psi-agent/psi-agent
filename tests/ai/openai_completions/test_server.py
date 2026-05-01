@@ -363,3 +363,76 @@ class TestHandleChatCompletionsWithReasoning:
         call_args = mock_client.chat_completions.call_args[0][0]
         assert "reasoning_effort" in call_args
         assert call_args["reasoning_effort"] == "high"
+
+
+class TestModelInjection:
+    """Tests for model injection behavior."""
+
+    @pytest.mark.asyncio
+    async def test_model_injected_when_missing(self, config: OpenAICompletionsConfig) -> None:
+        """Test model is injected when not provided in request."""
+        server = OpenAICompletionsServer(config)
+
+        mock_client = MagicMock()
+        mock_client.chat_completions = AsyncMock(
+            return_value={"id": "test", "choices": [{"message": {"content": "Hi"}}]}
+        )
+        server.client = mock_client
+
+        request = MagicMock(spec=web.Request)
+        request.json = AsyncMock(return_value={"messages": [{"role": "user", "content": "Hi"}]})
+
+        response = await server._handle_chat_completions(request)
+        assert response.status == 200
+
+        # Verify model was injected
+        call_args = mock_client.chat_completions.call_args[0][0]
+        assert call_args["model"] == "test-model"
+
+    @pytest.mark.asyncio
+    async def test_model_injected_when_session_placeholder(
+        self, config: OpenAICompletionsConfig
+    ) -> None:
+        """Test model is injected when request has 'session' placeholder."""
+        server = OpenAICompletionsServer(config)
+
+        mock_client = MagicMock()
+        mock_client.chat_completions = AsyncMock(
+            return_value={"id": "test", "choices": [{"message": {"content": "Hi"}}]}
+        )
+        server.client = mock_client
+
+        request = MagicMock(spec=web.Request)
+        request.json = AsyncMock(
+            return_value={"model": "session", "messages": [{"role": "user", "content": "Hi"}]}
+        )
+
+        response = await server._handle_chat_completions(request)
+        assert response.status == 200
+
+        # Verify model was replaced
+        call_args = mock_client.chat_completions.call_args[0][0]
+        assert call_args["model"] == "test-model"
+
+    @pytest.mark.asyncio
+    async def test_model_preserved_when_explicit(self, config: OpenAICompletionsConfig) -> None:
+        """Test explicit model is preserved, not overridden."""
+        server = OpenAICompletionsServer(config)
+
+        mock_client = MagicMock()
+        mock_client.chat_completions = AsyncMock(
+            return_value={"id": "test", "choices": [{"message": {"content": "Hi"}}]}
+        )
+        server.client = mock_client
+
+        request = MagicMock(spec=web.Request)
+        request.json = AsyncMock(
+            return_value={"model": "gpt-4o", "messages": [{"role": "user", "content": "Hi"}]}
+        )
+
+        response = await server._handle_chat_completions(request)
+        assert response.status == 200
+
+        # Verify user-specified model was preserved
+        call_args = mock_client.chat_completions.call_args[0][0]
+        assert call_args["model"] == "gpt-4o"
