@@ -55,8 +55,10 @@ class OpenAICompletionsServer:
             logger.error(f"Failed to parse request body: {e}")
             return web.Response(status=400, text="Invalid JSON body")
 
-        # Override model with configured model
-        body["model"] = self.config.model
+        # Inject model if not present or if it's the session placeholder
+        model = body.get("model")
+        if model is None or model == "session":
+            body["model"] = self.config.model
 
         # Inject reasoning parameters if configured
         if self.config.thinking is not None:

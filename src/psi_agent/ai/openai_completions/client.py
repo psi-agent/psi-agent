@@ -116,15 +116,7 @@ class OpenAICompletionsClient:
         if self._client is None:
             raise RuntimeError("Client not initialized. Use async context manager.")
 
-        # Inject model if not present
-        model = request_body.get("model")
-        if model is None:
-            request_body["model"] = self.config.model
-            model = self.config.model
-
-        logger.info(
-            f"Sending request to {self.config.base_url}/chat/completions with model {model}"
-        )
+        logger.info(f"Sending request to {self.config.base_url}/chat/completions")
         logger.debug("Request headers: Authorization=Bearer *** (hidden)")
         body_summary = {
             k: v if k != "messages" else f"[{len(v)} messages]" for k, v in request_body.items()

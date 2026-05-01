@@ -59,6 +59,11 @@ class AnthropicMessagesServer:
         # Translate OpenAI format to Anthropic format
         anthropic_body = translate_openai_to_anthropic(body, max_tokens=self.config.max_tokens)
 
+        # Inject model if not present or if it's the session placeholder
+        model = anthropic_body.get("model")
+        if model is None or model == "session":
+            anthropic_body["model"] = self.config.model
+
         # Inject reasoning parameters if configured
         if self.config.thinking is not None:
             anthropic_body["thinking"] = {"type": self.config.thinking}

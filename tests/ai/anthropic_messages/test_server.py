@@ -315,3 +315,76 @@ class TestHandleChatCompletionsWithReasoning:
         assert isinstance(response, web.Response)
         assert response.text is not None
         assert "Unexpected error" in response.text
+
+
+class TestModelInjection:
+    """Tests for model injection behavior."""
+
+    @pytest.mark.asyncio
+    async def test_model_injected_when_missing(self, config: AnthropicMessagesConfig) -> None:
+        """Test model is injected when not provided in request."""
+        server = AnthropicMessagesServer(config)
+
+        mock_client = AsyncMock()
+        cast(Any, mock_client).messages = AsyncMock(
+            return_value={"id": "test", "choices": [{"message": {"content": "Hi"}}]}
+        )
+        server.client = mock_client
+
+        request = MagicMock()
+        request.json = AsyncMock(return_value={"messages": [{"role": "user", "content": "Hi"}]})
+
+        response = await server._handle_chat_completions(request)
+        assert response.status == 200
+
+        # Verify model was injected
+        call_args = mock_client.messages.call_args[0][0]
+        assert call_args["model"] == "claude-sonnet-4-20250514"
+
+    @pytest.mark.asyncio
+    async def test_model_injected_when_session_placeholder(
+        self, config: AnthropicMessagesConfig
+    ) -> None:
+        """Test model is injected when request has 'session' placeholder."""
+        server = AnthropicMessagesServer(config)
+
+        mock_client = AsyncMock()
+        cast(Any, mock_client).messages = AsyncMock(
+            return_value={"id": "test", "choices": [{"message": {"content": "Hi"}}]}
+        )
+        server.client = mock_client
+
+        request = MagicMock()
+        request.json = AsyncMock(
+            return_value={"model": "session", "messages": [{"role": "user", "content": "Hi"}]}
+        )
+
+        response = await server._handle_chat_completions(request)
+        assert response.status == 200
+
+        # Verify model was replaced
+        call_args = mock_client.messages.call_args[0][0]
+        assert call_args["model"] == "claude-sonnet-4-20250514"
+
+    @pytest.mark.asyncio
+    async def test_model_preserved_when_explicit(self, config: AnthropicMessagesConfig) -> None:
+        """Test explicit model is preserved, not overridden."""
+        server = AnthropicMessagesServer(config)
+
+        mock_client = AsyncMock()
+        cast(Any, mock_client).messages = AsyncMock(
+            return_value={"id": "test", "choices": [{"message": {"content": "Hi"}}]}
+        )
+        server.client = mock_client
+
+        request = MagicMock()
+        request.json = AsyncMock(
+            return_value={"model": "claude-opus-4", "messages": [{"role": "user", "content": "Hi"}]}
+        )
+
+        response = await server._handle_chat_completions(request)
+        assert response.status == 200
+
+        # Verify user-specified model was preserved
+        call_args = mock_client.messages.call_args[0][0]
+        assert call_args["model"] == "claude-opus-4"
