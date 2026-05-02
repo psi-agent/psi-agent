@@ -139,6 +139,7 @@ class OpenAICompletionsServer:
         async for chunk in stream_gen:
             await response.write(chunk.encode())
 
+        logger.debug("SSE stream completed successfully")
         logger.info("Streaming response completed")
         return response
 
@@ -165,7 +166,6 @@ class OpenAICompletionsServer:
 
         # Initialize client
         self.client = OpenAICompletionsClient(self.config)
-        assert self.client is not None
         await self.client.__aenter__()
 
         # Start server

@@ -143,6 +143,7 @@ class AnthropicMessagesServer:
         async for chunk in stream_gen:
             await response.write(chunk.encode())
 
+        logger.debug("SSE stream completed successfully")
         logger.info("Streaming response completed")
         return response
 
@@ -169,7 +170,6 @@ class AnthropicMessagesServer:
 
         # Initialize client
         self.client = AnthropicMessagesClient(self.config)
-        assert self.client is not None
         await self.client.__aenter__()
 
         # Start server

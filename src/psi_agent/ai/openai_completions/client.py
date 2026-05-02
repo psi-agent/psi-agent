@@ -167,6 +167,7 @@ class OpenAICompletionsClient:
         """
         assert self._client is not None
 
+        logger.debug(f"Request body: {json.dumps(body, ensure_ascii=False, indent=2)}")
         body["stream"] = True
         sdk_params, extra_params = self._split_params(body)
 

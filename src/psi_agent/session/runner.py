@@ -161,6 +161,9 @@ class SessionRunner:
 
         Yields:
             Tuple of (content, reasoning, tool_calls) from each delta.
+
+        Raises:
+            RuntimeError: If an error chunk is received from the AI component.
         """
         async for line in response.content:
             line_str = line.decode().strip()
@@ -169,6 +172,14 @@ class SessionRunner:
             if line_str.startswith("data: "):
                 try:
                     chunk = json.loads(line_str[6:])
+
+                    # Check for error response
+                    if "error" in chunk:
+                        error_msg = chunk.get("error", "Unknown error")
+                        status_code = chunk.get("status_code", 500)
+                        logger.error(f"AI component error: {error_msg} (status: {status_code})")
+                        raise RuntimeError(f"AI component error: {error_msg}")
+
                     choices = chunk.get("choices", [])
                     if not choices:
                         yield None, None, None
