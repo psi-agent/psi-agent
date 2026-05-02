@@ -98,33 +98,8 @@ class TestTelegramCliCall:
     @patch("psi_agent.channel.telegram.cli.asyncio.run")
     @patch("psi_agent.channel.telegram.cli.TelegramBot")
     @patch("psi_agent.channel.telegram.cli.TelegramConfig")
-    @patch("psi_agent.channel.telegram.cli.mask_sensitive_args")
-    def test_cli_call_masks_sensitive_args(
-        self,
-        mock_mask: MagicMock,
-        mock_config_cls: MagicMock,
-        mock_bot_cls: MagicMock,
-        mock_run: MagicMock,
-    ) -> None:
-        """Test CLI __call__ masks sensitive arguments."""
-        mock_config = MagicMock()
-        mock_config_cls.return_value = mock_config
-        mock_bot = MagicMock()
-        mock_bot.start = AsyncMock()
-        mock_bot_cls.return_value = mock_bot
-
-        cli = Telegram(token="test-token", session_socket="/tmp/test.sock")
-        cli()
-
-        mock_mask.assert_called_once_with(["token", "proxy"])
-
-    @patch("psi_agent.channel.telegram.cli.asyncio.run")
-    @patch("psi_agent.channel.telegram.cli.TelegramBot")
-    @patch("psi_agent.channel.telegram.cli.TelegramConfig")
-    @patch("psi_agent.channel.telegram.cli.mask_sensitive_args")
     def test_cli_call_creates_config(
         self,
-        mock_mask: MagicMock,
         mock_config_cls: MagicMock,
         mock_bot_cls: MagicMock,
         mock_run: MagicMock,
@@ -156,10 +131,8 @@ class TestTelegramCliCall:
     @patch("psi_agent.channel.telegram.cli.asyncio.run")
     @patch("psi_agent.channel.telegram.cli.TelegramBot")
     @patch("psi_agent.channel.telegram.cli.TelegramConfig")
-    @patch("psi_agent.channel.telegram.cli.mask_sensitive_args")
     def test_cli_call_creates_bot(
         self,
-        mock_mask: MagicMock,
         mock_config_cls: MagicMock,
         mock_bot_cls: MagicMock,
         mock_run: MagicMock,
@@ -179,10 +152,8 @@ class TestTelegramCliCall:
     @patch("psi_agent.channel.telegram.cli.asyncio.run")
     @patch("psi_agent.channel.telegram.cli.TelegramBot")
     @patch("psi_agent.channel.telegram.cli.TelegramConfig")
-    @patch("psi_agent.channel.telegram.cli.mask_sensitive_args")
     def test_cli_call_starts_bot(
         self,
-        mock_mask: MagicMock,
         mock_config_cls: MagicMock,
         mock_bot_cls: MagicMock,
         mock_run: MagicMock,

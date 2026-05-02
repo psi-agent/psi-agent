@@ -119,10 +119,6 @@ async with Client(config) as client:
 - `_stream_request`：DEBUG 级别记录完整请求 body（与非流式请求一致）
 - Server `_handle_streaming`：DEBUG 级别记录 "SSE stream completed successfully"，INFO 级别记录 "Streaming response completed"
 
-### CLI 安全规范
-
-所有 CLI 入口在 `__call__` 开始时调用 `mask_sensitive_args(["api_key"])`，将敏感值从进程标题中隐藏。
-
 ### Server 路由一致
 
 两个 server 配置相同的路由：
@@ -138,7 +134,7 @@ async with Client(config) as client:
    - `config.py` — 配置 dataclass，包含 session_socket、model、api_key、base_url
    - `client.py` — Async context manager client，实现核心 API 调用方法
    - `server.py` — HTTP server（Unix socket），路由 `/v1/chat/completions`
-   - `cli.py` — tyro CLI 入口，调用 `mask_sensitive_args(["api_key"])`
+   - `cli.py` — tyro CLI 入口
    - `__init__.py` — 导出 Client, Server, Config
 3. 对外接口必须使用 OpenAI chat completions 格式
 4. 遵循统一的错误处理和日志模式

@@ -10,7 +10,6 @@ from loguru import logger
 
 from psi_agent.ai.openai_completions.config import OpenAICompletionsConfig
 from psi_agent.ai.openai_completions.server import OpenAICompletionsServer
-from psi_agent.utils.proctitle import mask_sensitive_args
 
 
 @dataclass
@@ -25,9 +24,6 @@ class OpenaiCompletions:
     reasoning_effort: str | None = None
 
     def __call__(self) -> None:
-        # Mask sensitive arguments from process title
-        mask_sensitive_args(["api_key"])
-
         config = OpenAICompletionsConfig(
             session_socket=self.session_socket,
             model=self.model,

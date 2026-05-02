@@ -74,41 +74,11 @@ class TestOpenaiCompletionsCli:
 class TestOpenaiCompletionsCliCall:
     """Tests for OpenAI completions CLI __call__ method."""
 
-    @patch("psi_agent.channel.cli.cli.asyncio.run")
-    @patch("psi_agent.ai.openai_completions.cli.OpenAICompletionsServer")
-    @patch("psi_agent.ai.openai_completions.cli.OpenAICompletionsConfig")
-    @patch("psi_agent.ai.openai_completions.cli.mask_sensitive_args")
-    def test_cli_call_masks_sensitive_args(
-        self,
-        mock_mask: MagicMock,
-        mock_config_cls: MagicMock,
-        mock_server_cls: MagicMock,
-        mock_run: MagicMock,
-    ) -> None:
-        """Test CLI __call__ masks sensitive arguments."""
-        mock_config = MagicMock()
-        mock_config_cls.return_value = mock_config
-        mock_server = MagicMock()
-        mock_server.start = AsyncMock()
-        mock_server.stop = AsyncMock()
-        mock_server_cls.return_value = mock_server
-
-        cli = OpenaiCompletions(
-            session_socket="/tmp/test.sock",
-            model="gpt-4",
-            api_key="test-key",
-        )
-        cli()
-
-        mock_mask.assert_called_once_with(["api_key"])
-
     @patch("psi_agent.ai.openai_completions.cli.asyncio.run")
     @patch("psi_agent.ai.openai_completions.cli.OpenAICompletionsServer")
     @patch("psi_agent.ai.openai_completions.cli.OpenAICompletionsConfig")
-    @patch("psi_agent.ai.openai_completions.cli.mask_sensitive_args")
     def test_cli_call_creates_config(
         self,
-        mock_mask: MagicMock,
         mock_config_cls: MagicMock,
         mock_server_cls: MagicMock,
         mock_run: MagicMock,
@@ -141,10 +111,8 @@ class TestOpenaiCompletionsCliCall:
     @patch("psi_agent.ai.openai_completions.cli.asyncio.run")
     @patch("psi_agent.ai.openai_completions.cli.OpenAICompletionsServer")
     @patch("psi_agent.ai.openai_completions.cli.OpenAICompletionsConfig")
-    @patch("psi_agent.ai.openai_completions.cli.mask_sensitive_args")
     def test_cli_call_creates_server(
         self,
-        mock_mask: MagicMock,
         mock_config_cls: MagicMock,
         mock_server_cls: MagicMock,
         mock_run: MagicMock,
@@ -182,10 +150,8 @@ class TestOpenaiCompletionsRunLoop:
 
     @patch("psi_agent.ai.openai_completions.cli.OpenAICompletionsServer")
     @patch("psi_agent.ai.openai_completions.cli.OpenAICompletionsConfig")
-    @patch("psi_agent.ai.openai_completions.cli.mask_sensitive_args")
     def test_run_loop_structure(
         self,
-        mock_mask: MagicMock,
         mock_config_cls: MagicMock,
         mock_server_cls: MagicMock,
     ) -> None:
@@ -235,10 +201,8 @@ class TestOpenaiCompletionsThinkingAndReasoning:
     @patch("psi_agent.ai.openai_completions.cli.asyncio.run")
     @patch("psi_agent.ai.openai_completions.cli.OpenAICompletionsServer")
     @patch("psi_agent.ai.openai_completions.cli.OpenAICompletionsConfig")
-    @patch("psi_agent.ai.openai_completions.cli.mask_sensitive_args")
     def test_config_includes_thinking_and_reasoning(
         self,
-        mock_mask: MagicMock,
         mock_config_cls: MagicMock,
         mock_server_cls: MagicMock,
         mock_run: MagicMock,

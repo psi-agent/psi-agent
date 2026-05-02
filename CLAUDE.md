@@ -587,35 +587,6 @@ def main() -> None:
     tyro.cli(run)
 ```
 
-### CLI 安全规范
-
-**敏感参数掩码：**
-
-所有接受敏感凭证（API keys、tokens、passwords）的 CLI 入口点，必须在参数解析后立即调用 `mask_sensitive_args()` 函数，将敏感值从进程标题中隐藏。
-
-- 使用 `psi_agent.utils.proctitle.mask_sensitive_args()` 函数
-- 在 `__call__` 方法的最开始处调用
-- 传入需要掩码的参数名列表（如 `["api_key"]`、`["token"]`）
-
-示例：
-
-```python
-from psi_agent.utils.proctitle import mask_sensitive_args
-
-@dataclass
-class MyCLI:
-    api_key: str
-
-    def __call__(self) -> None:
-        # 立即掩码敏感参数
-        mask_sensitive_args(["api_key"])
-        ...
-```
-
-**原因：** 命令行参数在进程列表（`ps aux`、`top`、`/proc/<pid>/cmdline`）中可见，暴露敏感凭证是安全风险。
-
-**注意：** 此方法在进程启动后有极短的时间窗口（毫秒级）参数仍可见，这是已知限制。
-
 ### 测试规范
 
 - 所有 Python API 必须编写单元测试
