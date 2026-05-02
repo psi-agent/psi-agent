@@ -60,11 +60,11 @@ class TestCliRun:
 
         # Mock the client's send_message to return success
         mock_send = AsyncMock(return_value="Test response")
-        client.send_message = mock_send
+        client.send_message = mock_send  # type: ignore
 
         # Mock the context manager
-        client.__aenter__ = AsyncMock(return_value=client)
-        client.__aexit__ = AsyncMock(return_value=None)
+        client.__aenter__ = AsyncMock(return_value=client)  # type: ignore
+        client.__aexit__ = AsyncMock(return_value=None)  # type: ignore
 
         cli = Cli(session_socket="/tmp/test.sock", message="Hello", stream=True)
 
@@ -89,11 +89,11 @@ class TestCliRun:
 
         # Mock the client's send_message to return success
         mock_send = AsyncMock(return_value="Test response")
-        client.send_message = mock_send
+        client.send_message = mock_send  # type: ignore
 
         # Mock the context manager
-        client.__aenter__ = AsyncMock(return_value=client)
-        client.__aexit__ = AsyncMock(return_value=None)
+        client.__aenter__ = AsyncMock(return_value=client)  # type: ignore
+        client.__aexit__ = AsyncMock(return_value=None)  # type: ignore
 
         cli = Cli(session_socket="/tmp/test.sock", message="Hello", stream=False)
 
@@ -118,11 +118,11 @@ class TestCliRun:
 
         # Mock the client's send_message to return error
         mock_send = AsyncMock(return_value="Error: Connection failed")
-        client.send_message = mock_send
+        client.send_message = mock_send  # type: ignore
 
         # Mock the context manager
-        client.__aenter__ = AsyncMock(return_value=client)
-        client.__aexit__ = AsyncMock(return_value=None)
+        client.__aenter__ = AsyncMock(return_value=client)  # type: ignore
+        client.__aexit__ = AsyncMock(return_value=None)  # type: ignore
 
         cli = Cli(session_socket="/tmp/test.sock", message="Hello", stream=False)
 
