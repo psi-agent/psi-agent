@@ -63,6 +63,10 @@ async def chat_completions(
 4. 发送请求（流式或非流式）
 5. 返回响应或 yield SSE chunks
 
+**流式请求日志**：
+
+`_stream_request` 方法在发送请求前记录完整请求 body（DEBUG 级别），确保流式与非流式请求具有相同的日志粒度。
+
 ### OpenAICompletionsServer
 
 HTTP server，监听 Unix socket：
@@ -79,6 +83,12 @@ HTTP server，监听 Unix socket：
 - 接收请求后注入配置中的 model
 - 注入 thinking 和 reasoning_effort 参数（如果配置）
 - 调用 client 处理请求
+
+**流式响应日志**：
+
+`_handle_streaming` 方法在流式完成后记录两条日志：
+- DEBUG 级别："SSE stream completed successfully"
+- INFO 级别："Streaming response completed"
 
 ### CLI 入口
 

@@ -65,6 +65,10 @@ async def messages(
 4. 调用 `translate_anthropic_to_openai()` 或 `translate_anthropic_stream()` 转换响应
 5. 返回 OpenAI 格式的响应
 
+**流式请求日志**：
+
+`_stream_request` 方法在发送请求前记录完整请求 body（DEBUG 级别），确保流式与非流式请求具有相同的日志粒度。
+
 **特殊处理**：
 - 流式请求时移除 `stream` 参数（Anthropic SDK 的 `messages.stream()` 不接受此参数）
 - 使用 `ANTHROPIC_STANDARD_EVENT_TYPES` 过滤非标准事件
@@ -79,6 +83,12 @@ HTTP server，监听 Unix socket：
 - 注入 thinking 和 reasoning_effort 参数（如果配置）
 - 调用 client 处理请求
 - 返回 OpenAI 格式响应
+
+**流式响应日志**：
+
+`_handle_streaming` 方法在流式完成后记录两条日志：
+- DEBUG 级别："SSE stream completed successfully"
+- INFO 级别："Streaming response completed"
 
 ### Translator
 
@@ -112,9 +122,36 @@ HTTP server，监听 Unix socket：
 | Anthropic 字段 | OpenAI 字段 | 转换逻辑 |
 |----------------|-------------|----------|
 | content (text) | choices.message.content | 提取文本内容，多 block 拼接 |
+| content (tool_use) | choices.message.tool_calls | 转换为 tool_calls 数组 |
 | stop_reason | finish_reason | 映射：end_turn→stop, tool_use→tool_calls, max_tokens→length |
 | usage.input_tokens | usage.prompt_tokens | 直接映射 |
 | usage.output_tokens | usage.completion_tokens | 直接映射 |
+
+**tool_use 转换**：
+
+非流式响应中的 `tool_use` content blocks 转换为 OpenAI `tool_calls` 格式：
+
+```python
+# Anthropic tool_use block
+{"type": "tool_use", "id": "call_123", "name": "read", "input": {"file": "test.py"}}
+
+# 转换为 OpenAI tool_call
+{
+    "id": "call_123",
+    "type": "function",
+    "function": {"name": "read", "arguments": '{"file": "test.py"}'}
+}
+```
+
+转换后的 message 结构：
+
+```json
+{
+  "role": "assistant",
+  "content": "text content or null",
+  "tool_calls": [{"id": "...", "type": "function", "function": {...}}]
+}
+```
 
 #### StreamingTranslator
 
@@ -319,6 +356,8 @@ ANTHROPIC_STANDARD_EVENT_TYPES: frozenset[str] = frozenset({
 - Usage 映射
 - Finish reason 映射
 - 多 content blocks 拼接
+- tool_use block 转换为 tool_calls
+- 混合 text 和 tool_use blocks
 
 **流式转换**：
 - message_start 事件

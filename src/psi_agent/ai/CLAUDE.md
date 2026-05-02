@@ -108,10 +108,16 @@ async with Client(config) as client:
 
 | 级别 | 内容 |
 |------|------|
-| DEBUG | 请求/响应体、流式 chunk、SDK 事件、配置详情 |
-| INFO | 生命周期事件、请求发送、响应接收、server 启动/停止 |
+| DEBUG | 请求/响应体、流式 chunk、SDK 事件、配置详情、流式请求 body、流式完成确认 |
+| INFO | 生命周期事件、请求发送、响应接收、server 启动/停止、流式响应完成 |
 
 敏感信息（API key）在日志中掩码为 `***`。
+
+**流式请求日志一致性**：
+
+两个适配器的流式处理遵循统一的日志模式：
+- `_stream_request`：DEBUG 级别记录完整请求 body（与非流式请求一致）
+- Server `_handle_streaming`：DEBUG 级别记录 "SSE stream completed successfully"，INFO 级别记录 "Streaming response completed"
 
 ### CLI 安全规范
 
