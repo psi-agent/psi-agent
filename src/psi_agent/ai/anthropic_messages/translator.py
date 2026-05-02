@@ -202,12 +202,27 @@ def translate_anthropic_to_openai(anthropic_response: dict[str, Any]) -> dict[st
     Returns:
         OpenAI chat completions response format.
     """
-    # Extract text from content blocks
+    # Extract content blocks
     content_blocks = anthropic_response.get("content", [])
     text_content = ""
+    tool_calls: list[dict[str, Any]] = []
+
     for block in content_blocks:
-        if block.get("type") == "text":
+        block_type = block.get("type", "")
+        if block_type == "text":
             text_content += block.get("text", "")
+        elif block_type == "tool_use":
+            # Convert tool_use block to OpenAI tool_calls format
+            tool_calls.append(
+                {
+                    "id": block.get("id", ""),
+                    "type": "function",
+                    "function": {
+                        "name": block.get("name", ""),
+                        "arguments": json.dumps(block.get("input", {})),
+                    },
+                }
+            )
 
     # Determine finish reason
     stop_reason = anthropic_response.get("stop_reason", "end_turn")
@@ -227,6 +242,11 @@ def translate_anthropic_to_openai(anthropic_response: dict[str, Any]) -> dict[st
         "total_tokens": usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
     }
 
+    # Construct message
+    message: dict[str, Any] = {"role": "assistant", "content": text_content or None}
+    if tool_calls:
+        message["tool_calls"] = tool_calls
+
     # Construct OpenAI response
     return {
         "id": anthropic_response.get("id", ""),
@@ -236,7 +256,7 @@ def translate_anthropic_to_openai(anthropic_response: dict[str, Any]) -> dict[st
         "choices": [
             {
                 "index": 0,
-                "message": {"role": "assistant", "content": text_content},
+                "message": message,
                 "finish_reason": finish_reason,
             }
         ],

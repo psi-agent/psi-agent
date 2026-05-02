@@ -382,6 +382,56 @@ class TestTranslateAnthropicToOpenAI:
 
         assert result["choices"][0]["message"]["content"] == "Hello world!"
 
+    def test_tool_use_content_block(self) -> None:
+        """Test tool_use content block is converted to tool_calls."""
+        anthropic_response = {
+            "id": "msg_123",
+            "model": "claude-3",
+            "content": [
+                {"type": "tool_use", "id": "toolu_123", "name": "bash", "input": {"cmd": "ls"}}
+            ],
+            "stop_reason": "tool_use",
+            "usage": {"input_tokens": 10, "output_tokens": 5},
+        }
+
+        result = translate_anthropic_to_openai(anthropic_response)
+
+        assert result["id"] == "msg_123"
+        assert result["choices"][0]["finish_reason"] == "tool_calls"
+        message = result["choices"][0]["message"]
+        assert "tool_calls" in message
+        assert len(message["tool_calls"]) == 1
+        tool_call = message["tool_calls"][0]
+        assert tool_call["id"] == "toolu_123"
+        assert tool_call["type"] == "function"
+        assert tool_call["function"]["name"] == "bash"
+        assert tool_call["function"]["arguments"] == '{"cmd": "ls"}'
+
+    def test_mixed_text_and_tool_use_blocks(self) -> None:
+        """Test response with both text and tool_use content blocks."""
+        anthropic_response = {
+            "id": "msg_456",
+            "model": "claude-3",
+            "content": [
+                {"type": "text", "text": "Let me help you with that."},
+                {
+                    "type": "tool_use",
+                    "id": "toolu_456",
+                    "name": "read",
+                    "input": {"file": "test.py"},
+                },
+            ],
+            "stop_reason": "tool_use",
+        }
+
+        result = translate_anthropic_to_openai(anthropic_response)
+
+        message = result["choices"][0]["message"]
+        assert message["content"] == "Let me help you with that."
+        assert "tool_calls" in message
+        assert len(message["tool_calls"]) == 1
+        assert message["tool_calls"][0]["function"]["name"] == "read"
+
 
 class TestStreamingTranslator:
     """Tests for streaming event translation."""
