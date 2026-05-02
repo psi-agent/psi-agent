@@ -9,13 +9,13 @@ from typing import Any
 import aiohttp
 from loguru import logger
 
-from psi_agent.channel.telegram.config import TelegramConfig
+from psi_agent.channel.cli.config import CliConfig
 
 
-class TelegramClient:
+class CliClient:
     """Client for communicating with psi-session via Unix socket."""
 
-    def __init__(self, config: TelegramConfig) -> None:
+    def __init__(self, config: CliConfig) -> None:
         """Initialize the client.
 
         Args:
@@ -25,7 +25,7 @@ class TelegramClient:
         self._session: aiohttp.ClientSession | None = None
         self._connector: aiohttp.UnixConnector | None = None
 
-    async def __aenter__(self) -> TelegramClient:
+    async def __aenter__(self) -> CliClient:
         """Enter async context."""
         socket_path = self.config.socket_path()
         self._connector = aiohttp.UnixConnector(path=str(socket_path))
@@ -44,12 +44,16 @@ class TelegramClient:
             self._connector = None
             logger.debug("Closed aiohttp connector")
 
-    async def send_message(self, message: str, user_id: str) -> str:
+    async def send_message(
+        self,
+        message: str,
+        on_chunk: Callable[[str], None] | None = None,
+    ) -> str:
         """Send a message to psi-session and return the response.
 
         Args:
             message: The user message string to send.
-            user_id: The Telegram user identifier (format: telegram:<id>).
+            on_chunk: Optional callback invoked for each content chunk (streaming only).
 
         Returns:
             The assistant's response content.
@@ -62,16 +66,38 @@ class TelegramClient:
 
         url = "http://localhost/v1/chat/completions"
         headers = {"Content-Type": "application/json"}
+
+        if self.config.stream:
+            return await self._send_streaming(url, headers, message, on_chunk)
+        else:
+            return await self._send_non_streaming(url, headers, message)
+
+    async def _send_non_streaming(
+        self,
+        url: str,
+        headers: dict[str, str],
+        message: str,
+    ) -> str:
+        """Send a non-streaming request.
+
+        Args:
+            url: The request URL.
+            headers: The request headers.
+            message: The user message.
+
+        Returns:
+            The response content.
+        """
         body = {
             "model": "session",
             "messages": [{"role": "user", "content": message}],
-            "user": user_id,
             "stream": False,
         }
         logger.debug(f"Request body: {json.dumps(body, ensure_ascii=False, indent=2)}")
 
-        logger.debug(f"Sending message to session for user {user_id}")
+        logger.debug("Sending message to session")
 
+        assert self._session is not None  # for type checker
         try:
             async with self._session.post(url, headers=headers, json=body) as response:
                 if response.status != 200:
@@ -101,40 +127,34 @@ class TelegramClient:
             logger.error("Request timeout")
             return "Error: Request timeout"
 
-    async def send_message_stream(
+    async def _send_streaming(
         self,
+        url: str,
+        headers: dict[str, str],
         message: str,
-        user_id: str,
         on_chunk: Callable[[str], None] | None = None,
     ) -> str:
-        """Send a message to psi-session with streaming response.
+        """Send a streaming request.
 
         Args:
-            message: The user message string to send.
-            user_id: The Telegram user identifier (format: telegram:<id>).
+            url: The request URL.
+            headers: The request headers.
+            message: The user message.
             on_chunk: Optional callback invoked for each content chunk.
 
         Returns:
-            The complete assistant's response content.
-
-        Raises:
-            RuntimeError: If client is not initialized.
+            The complete response content.
         """
-        if self._session is None:
-            raise RuntimeError("Client not initialized. Use async context manager.")
-
-        url = "http://localhost/v1/chat/completions"
-        headers = {"Content-Type": "application/json"}
         body = {
             "model": "session",
             "messages": [{"role": "user", "content": message}],
-            "user": user_id,
             "stream": True,
         }
         logger.debug(f"Request body: {json.dumps(body, ensure_ascii=False, indent=2)}")
 
-        logger.debug(f"Sending streaming message to session for user {user_id}")
+        logger.debug("Sending streaming message to session")
 
+        assert self._session is not None  # for type checker
         try:
             async with self._session.post(url, headers=headers, json=body) as response:
                 if response.status != 200:
