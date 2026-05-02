@@ -29,9 +29,7 @@ class TestCliCall:
         cli = Cli(session_socket="/tmp/test.sock", message="Hello")
         cli()
 
-        mock_config.assert_called_once_with(
-            session_socket="/tmp/test.sock", stream=True
-        )
+        mock_config.assert_called_once_with(session_socket="/tmp/test.sock", stream=True)
         mock_client.assert_called_once()
         mock_run.assert_called_once()
 
@@ -48,9 +46,7 @@ class TestCliCall:
         cli = Cli(session_socket="/tmp/test.sock", message="Hello", stream=False)
         cli()
 
-        mock_config.assert_called_once_with(
-            session_socket="/tmp/test.sock", stream=False
-        )
+        mock_config.assert_called_once_with(session_socket="/tmp/test.sock", stream=False)
 
 
 class TestCliRun:
