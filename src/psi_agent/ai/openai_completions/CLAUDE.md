@@ -211,7 +211,7 @@ def _handle_error(self, e: Exception) -> dict[str, Any]:
 | test_config.py | 配置创建、默认值、socket_path 方法 |
 | test_client.py | context manager、流式/非流式请求、错误处理、参数分离、extra_body 传递 |
 | test_server.py | 路由配置、请求处理、流式/非流式响应、thinking/reasoning_effort 注入 |
-| test_cli.py | CLI 参数解析、mask_sensitive_args 调用、config 创建 |
+| test_cli.py | CLI 参数解析、config 创建 |
 
 ## 与其他模块的关系
 

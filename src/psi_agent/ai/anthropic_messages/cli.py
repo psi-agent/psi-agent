@@ -10,7 +10,6 @@ from loguru import logger
 
 from psi_agent.ai.anthropic_messages.config import AnthropicMessagesConfig
 from psi_agent.ai.anthropic_messages.server import AnthropicMessagesServer
-from psi_agent.utils.proctitle import mask_sensitive_args
 
 
 @dataclass
@@ -26,9 +25,6 @@ class AnthropicMessages:
     reasoning_effort: str | None = None
 
     def __call__(self) -> None:
-        # Mask sensitive arguments from process title
-        mask_sensitive_args(["api_key"])
-
         config = AnthropicMessagesConfig(
             session_socket=self.session_socket,
             model=self.model,
