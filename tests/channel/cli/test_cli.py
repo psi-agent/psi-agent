@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from psi_agent.channel.cli.cli import Cli
 from psi_agent.channel.cli.client import CliClient
 from psi_agent.channel.cli.config import CliConfig
@@ -41,6 +43,15 @@ class TestCliClient:
         assert client._session is None
         assert client._connector is None
 
+    @pytest.mark.asyncio
+    async def test_send_message_raises_without_context(self) -> None:
+        """Test send_message raises RuntimeError without context manager."""
+        config = CliConfig(session_socket="/tmp/test.sock")
+        client = CliClient(config)
+
+        with pytest.raises(RuntimeError, match="Client not initialized"):
+            await client.send_message("Hello")
+
 
 class TestCliFlags:
     """Tests for CLI flag handling."""
@@ -78,3 +89,19 @@ class TestCliMain:
         from psi_agent.channel.cli.cli import main
 
         assert callable(main)
+
+    def test_print_chunk(self) -> None:
+        """Test _print_chunk static method."""
+        import sys
+        from io import StringIO
+
+        captured = StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = captured
+
+        try:
+            Cli._print_chunk("test")
+        finally:
+            sys.stdout = old_stdout
+
+        assert captured.getvalue() == "test"
