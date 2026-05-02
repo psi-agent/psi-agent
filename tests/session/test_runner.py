@@ -1279,3 +1279,24 @@ class TestParseStreamingResponse:
         assert results[0][0] is None
         assert results[1][0] is None
         assert results[2][0] == "Hello"
+
+    @pytest.mark.asyncio
+    async def test_parse_streaming_raises_on_error_chunk(self, config):
+        """Test _parse_streaming_response raises RuntimeError on error chunk."""
+        runner = SessionRunner(config)
+
+        sse_lines = [
+            b'data: {"error": "Authentication failed", "status_code": 401}\n',
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        with pytest.raises(RuntimeError, match="AI component error: Authentication failed"):
+            async for _ in runner._parse_streaming_response(mock_response):
+                pass
