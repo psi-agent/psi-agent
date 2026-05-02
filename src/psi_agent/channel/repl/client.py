@@ -42,6 +42,7 @@ class ReplClient:
         if self._connector is not None:
             await self._connector.close()
             self._connector = None
+            logger.debug("Closed aiohttp connector")
 
     async def send_message_stream(
         self,
@@ -67,6 +68,7 @@ class ReplClient:
         url = "http://localhost/v1/chat/completions"
         headers = {"Content-Type": "application/json"}
         body = {
+            "model": "session",
             "messages": [{"role": "user", "content": message}],
             "stream": True,
         }
@@ -99,13 +101,14 @@ class ReplClient:
                                 if reasoning:
                                     logger.debug(f"Stream reasoning chunk: {reasoning}")
 
-                                # Log content field if present and non-empty
+                                # Handle content field
                                 content = delta.get("content")
-                                if content:
+                                if content is not None:
                                     content_chunks.append(content)
-                                    logger.debug(f"Stream content chunk: {content}")
-                                    if on_chunk is not None:
-                                        on_chunk(content)
+                                    if content:
+                                        logger.debug(f"Stream content chunk: {content}")
+                                        if on_chunk is not None:
+                                            on_chunk(content)
                         except json.JSONDecodeError:
                             pass
 
@@ -142,6 +145,7 @@ class ReplClient:
         url = "http://localhost/v1/chat/completions"
         headers = {"Content-Type": "application/json"}
         body = {
+            "model": "session",
             "messages": [{"role": "user", "content": message}],
             "stream": False,
         }

@@ -2,41 +2,46 @@
 
 from __future__ import annotations
 
-import inspect
-
 import pytest
 
-from psi_agent.channel.cli.cli import Cli, send_message
+from psi_agent.channel.cli.cli import Cli
+from psi_agent.channel.cli.client import CliClient
+from psi_agent.channel.cli.config import CliConfig
 
 
-@pytest.mark.asyncio
-async def test_send_message_connection_error():
-    """Test send_message with invalid socket path."""
-    result = await send_message("/nonexistent/socket.sock", "Hello")
-    assert result.startswith("Error:")
-    assert "Cannot connect" in result
+class TestCliConfig:
+    """Tests for CLI config."""
+
+    def test_config_creation(self) -> None:
+        """Test config can be created."""
+        config = CliConfig(session_socket="/tmp/test.sock")
+        assert config.session_socket == "/tmp/test.sock"
+        assert config.stream is True
+
+    def test_config_with_stream_false(self) -> None:
+        """Test config with stream=False."""
+        config = CliConfig(session_socket="/tmp/test.sock", stream=False)
+        assert config.stream is False
+
+    def test_socket_path(self) -> None:
+        """Test socket_path returns anyio.Path."""
+        import anyio
+
+        config = CliConfig(session_socket="/tmp/test.sock")
+        path = config.socket_path()
+        assert isinstance(path, anyio.Path)
 
 
-@pytest.mark.asyncio
-async def test_send_message_request_format():
-    """Test that request is properly formatted."""
-    # This test verifies the function exists and has correct signature
-    # Integration tests would require a running session
-    sig = inspect.signature(send_message)
-    params = list(sig.parameters.keys())
+class TestCliClient:
+    """Tests for CLI client."""
 
-    assert "session_socket" in params
-    assert "message" in params
-    assert "stream" in params
-
-
-@pytest.mark.asyncio
-async def test_send_message_default_stream_true():
-    """Test that send_message defaults to streaming mode."""
-    sig = inspect.signature(send_message)
-    stream_param = sig.parameters["stream"]
-
-    assert stream_param.default is True
+    def test_client_creation(self) -> None:
+        """Test client can be created."""
+        config = CliConfig(session_socket="/tmp/test.sock")
+        client = CliClient(config)
+        assert client.config is config
+        assert client._session is None
+        assert client._connector is None
 
 
 class TestCliFlags:
@@ -54,9 +59,24 @@ class TestCliFlags:
 
         assert cli.stream is False
 
-    def test_cli_stream_passed_to_send_message(self) -> None:
-        """Test CLI passes correct stream value to send_message."""
-        cli = Cli(session_socket="/tmp/test.sock", message="Hello", stream=False)
+    def test_cli_session_socket(self) -> None:
+        """Test CLI session_socket attribute."""
+        cli = Cli(session_socket="/tmp/test.sock", message="Hello")
 
-        # stream=False means non-streaming mode
-        assert cli.stream is False
+        assert cli.session_socket == "/tmp/test.sock"
+
+    def test_cli_message(self) -> None:
+        """Test CLI message attribute."""
+        cli = Cli(session_socket="/tmp/test.sock", message="Test message")
+
+        assert cli.message == "Test message"
+
+
+class TestCliMain:
+    """Tests for CLI main function."""
+
+    def test_main_exists(self) -> None:
+        """Test main function exists."""
+        from psi_agent.channel.cli.cli import main
+
+        assert callable(main)
