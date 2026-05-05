@@ -36,7 +36,7 @@ jobs:
         run: uv run pytest --cov-report=xml --cov=src/psi_agent --cov-branch --junitxml=junit.xml -o junit_family=legacy
 
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           slug: psi-agent/psi-agent
