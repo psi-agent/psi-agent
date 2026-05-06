@@ -19,10 +19,14 @@ The workflow SHALL identify the most recent commit on main branch that has passe
 - **THEN** the workflow exits gracefully without creating a tag
 
 ### Requirement: Skip already-tagged commits
-The workflow SHALL NOT create a tag if the target commit already has any tag.
+The workflow SHALL NOT create a tag if the target commit already has any tag (including both lightweight and annotated tags).
 
-#### Scenario: Commit has existing tag
-- **WHEN** the identified commit already has a tag
+#### Scenario: Commit has existing lightweight tag
+- **WHEN** the identified commit already has a lightweight tag
+- **THEN** the workflow exits without creating a new tag
+
+#### Scenario: Commit has existing annotated tag
+- **WHEN** the identified commit already has an annotated tag
 - **THEN** the workflow exits without creating a new tag
 
 #### Scenario: Commit has no tag
