@@ -50,9 +50,9 @@ jobs:
           echo "Found last successful CI commit: $COMMIT_SHA"
 
           # Step 2: Check if commit already has a tag
-          if git describe --exact-match "$COMMIT_SHA" 2>/dev/null; then
-            EXISTING_TAG=$(git describe --exact-match "$COMMIT_SHA")
-            echo "::notice::Commit $COMMIT_SHA already has tag: $EXISTING_TAG, skipping"
+          EXISTING_TAGS=$(git tag --list --points-at "$COMMIT_SHA")
+          if [ -n "$EXISTING_TAGS" ]; then
+            echo "::notice::Commit $COMMIT_SHA already has tag(s): $(echo "$EXISTING_TAGS" | tr '\n' ','), skipping"
             exit 0
           fi
 
