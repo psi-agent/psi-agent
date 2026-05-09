@@ -371,3 +371,233 @@ class TestSnapshotError:
         """SnapshotError inherits from Exception."""
         error = SnapshotError("Test")
         assert isinstance(error, Exception)
+
+
+class TestSnapshotMissingKeys:
+    """Tests for snapshot with missing keys in mount info.
+
+    Bug: When upper_dir key is missing from mount info,
+    the code raises KeyError instead of SnapshotError.
+    """
+
+    @pytest.mark.xfail(
+        reason="Bug: KeyError instead of SnapshotError when upper_dir key is missing", strict=True
+    )
+    async def test_snapshot_missing_upper_dir_key(self, tmp_path: anyio.Path) -> None:
+        """Snapshot raises SnapshotError when upper_dir key is missing."""
+        tmp = anyio.Path(tmp_path)
+        input_file = tmp / "workspace.squashfs"
+        await input_file.touch()
+
+        mount_point = tmp / "mounted"
+        await mount_point.mkdir()
+
+        # Create mount info without upper_dir key
+        mount_info = mount_point / ".psi-mount-info"
+        mount_info_content = f"{{'squashfs_mount': '{tmp}/squashfs', 'work_dir': '{tmp}/work'}}"
+        await mount_info.write_text(mount_info_content)
+
+        with pytest.raises(SnapshotError):
+            await snapshot(input_file, mount_point, tag="v1.1")
+
+
+class TestSnapshotDifferentOutputFile:
+    """Tests for snapshot with different output_file from input_file."""
+
+    async def test_snapshot_different_output_file(self, tmp_path: anyio.Path) -> None:
+        """Snapshot writes to a different output file."""
+        tmp = anyio.Path(tmp_path)
+        input_file = tmp / "workspace.squashfs"
+        await input_file.touch()
+
+        output_file = tmp / "workspace_v2.squashfs"
+
+        mount_point = tmp / "mounted"
+        await mount_point.mkdir()
+
+        upper_dir = tmp / "upper"
+        await upper_dir.mkdir()
+        await (upper_dir / "new_file.txt").write_text("new content")
+
+        # Create valid mount info file
+        mount_info = mount_point / ".psi-mount-info"
+        mount_info_content = (
+            f"{{'squashfs_mount': '{tmp}/squashfs', "
+            f"'upper_dir': '{upper_dir}', 'work_dir': '{tmp}/work'}}"
+        )
+        await mount_info.write_text(mount_info_content)
+
+        with (
+            patch(
+                "psi_agent.workspace.snapshot.api._read_manifest_from_squashfs",
+                new_callable=AsyncMock,
+            ) as mock_read,
+            patch(
+                "psi_agent.workspace.snapshot.api._extract_squashfs",
+                new_callable=AsyncMock,
+            ) as mock_extract,
+            patch(
+                "psi_agent.workspace.snapshot.api._create_squashfs",
+                new_callable=AsyncMock,
+            ) as mock_create,
+            patch("psi_agent.workspace.snapshot.api.shutil.move") as mock_move,
+        ):
+            default_uuid = uuid4()
+            mock_manifest = Manifest(layers={default_uuid: Layer(tag="v1.0")}, default=default_uuid)
+            mock_read.return_value = mock_manifest
+            mock_extract.return_value = None
+            mock_create.return_value = None
+            mock_move.return_value = None
+
+            await snapshot(input_file, mount_point, output_file=output_file, tag="v1.1")
+
+            mock_read.assert_called_once()
+            mock_extract.assert_called_once()
+            mock_create.assert_called_once()
+            mock_move.assert_called()
+
+
+class TestSnapshotOutputFileExists:
+    """Tests for snapshot when output_file already exists."""
+
+    async def test_snapshot_output_file_already_exists(self, tmp_path: anyio.Path) -> None:
+        """Snapshot overwrites existing output file."""
+        tmp = anyio.Path(tmp_path)
+        input_file = tmp / "workspace.squashfs"
+        await input_file.touch()
+
+        output_file = tmp / "workspace_v2.squashfs"
+        # Create an existing output file
+        await output_file.write_bytes(b"old content")
+
+        mount_point = tmp / "mounted"
+        await mount_point.mkdir()
+
+        upper_dir = tmp / "upper"
+        await upper_dir.mkdir()
+        await (upper_dir / "new_file.txt").write_text("new content")
+
+        # Create valid mount info file
+        mount_info = mount_point / ".psi-mount-info"
+        mount_info_content = (
+            f"{{'squashfs_mount': '{tmp}/squashfs', "
+            f"'upper_dir': '{upper_dir}', 'work_dir': '{tmp}/work'}}"
+        )
+        await mount_info.write_text(mount_info_content)
+
+        with (
+            patch(
+                "psi_agent.workspace.snapshot.api._read_manifest_from_squashfs",
+                new_callable=AsyncMock,
+            ) as mock_read,
+            patch(
+                "psi_agent.workspace.snapshot.api._extract_squashfs",
+                new_callable=AsyncMock,
+            ) as mock_extract,
+            patch(
+                "psi_agent.workspace.snapshot.api._create_squashfs",
+                new_callable=AsyncMock,
+            ) as mock_create,
+            patch("psi_agent.workspace.snapshot.api.shutil.move") as mock_move,
+        ):
+            default_uuid = uuid4()
+            mock_manifest = Manifest(layers={default_uuid: Layer(tag="v1.0")}, default=default_uuid)
+            mock_read.return_value = mock_manifest
+            mock_extract.return_value = None
+            mock_create.return_value = None
+            mock_move.return_value = None
+
+            await snapshot(input_file, mount_point, output_file=output_file, tag="v1.1")
+
+            mock_read.assert_called_once()
+            mock_extract.assert_called_once()
+            mock_create.assert_called_once()
+            mock_move.assert_called()
+
+
+class TestSnapshotManifestUpdates:
+    """Tests for snapshot manifest updates."""
+
+    async def test_snapshot_manifest_parent_and_default(self, tmp_path: anyio.Path) -> None:
+        """Snapshot sets parent to previous default and default to new layer."""
+        tmp = anyio.Path(tmp_path)
+        input_file = tmp / "workspace.squashfs"
+        await input_file.touch()
+
+        mount_point = tmp / "mounted"
+        await mount_point.mkdir()
+
+        upper_dir = tmp / "upper"
+        await upper_dir.mkdir()
+        await (upper_dir / "new_file.txt").write_text("new content")
+
+        # Create valid mount info file
+        mount_info = mount_point / ".psi-mount-info"
+        mount_info_content = (
+            f"{{'squashfs_mount': '{tmp}/squashfs', "
+            f"'upper_dir': '{upper_dir}', 'work_dir': '{tmp}/work'}}"
+        )
+        await mount_info.write_text(mount_info_content)
+
+        default_uuid = uuid4()
+        mock_manifest = Manifest(layers={default_uuid: Layer(tag="v1.0")}, default=default_uuid)
+
+        captured_manifest = None
+
+        async def mock_write_manifest(path: anyio.Path, content: str) -> None:
+            nonlocal captured_manifest
+            captured_manifest = content
+
+        with (
+            patch(
+                "psi_agent.workspace.snapshot.api._read_manifest_from_squashfs",
+                new_callable=AsyncMock,
+                return_value=mock_manifest,
+            ),
+            patch(
+                "psi_agent.workspace.snapshot.api._extract_squashfs",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "psi_agent.workspace.snapshot.api._create_squashfs",
+                new_callable=AsyncMock,
+            ),
+            patch("psi_agent.workspace.snapshot.api.shutil.move"),
+            patch("psi_agent.workspace.snapshot.api.serialize_manifest") as mock_serialize,
+        ):
+            # Track what manifest gets serialized
+            serialized_manifests = []
+
+            def track_serialize(manifest: Manifest) -> str:
+                serialized_manifests.append(manifest)
+                # Return a valid JSON string
+                import json
+
+                layers_data = {}
+                for uuid, layer in manifest.layers.items():
+                    layer_data = {}
+                    if layer.parent is not None:
+                        layer_data["parent"] = str(layer.parent)
+                    if layer.tag is not None:
+                        layer_data["tag"] = layer.tag
+                    layers_data[str(uuid)] = layer_data
+                return json.dumps(
+                    {
+                        "layers": layers_data,
+                        "default": str(manifest.default) if manifest.default else "",
+                    }
+                )
+
+            mock_serialize.side_effect = track_serialize
+
+            await snapshot(input_file, mount_point, tag="v1.1")
+
+            # Verify the manifest was updated correctly
+            assert len(serialized_manifests) == 1
+            updated_manifest = serialized_manifests[0]
+            # The new layer's parent should be the initial default
+            new_default = updated_manifest.default
+            assert new_default is not None
+            assert new_default != default_uuid
+            assert updated_manifest.layers[new_default].parent == default_uuid
+            assert updated_manifest.layers[new_default].tag == "v1.1"

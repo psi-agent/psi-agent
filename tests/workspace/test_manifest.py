@@ -339,3 +339,145 @@ class TestSerializeManifestRoundTripExtended:
 
         assert reparsed.layers == original.layers
         assert reparsed.default == original.default
+
+
+class TestParseManifestValidation:
+    """Validation tests for parse_manifest edge cases."""
+
+    def test_layer_data_not_dict_raises_error(self) -> None:
+        """Test that layer data not being a dict raises ManifestParseError."""
+        uuid1 = uuid4()
+        with pytest.raises(ManifestParseError, match="must be an object"):
+            parse_manifest(f'{{"layers": {{"{uuid1}": "not_a_dict"}} , "default": "{uuid1}"}}')
+
+    def test_invalid_parent_uuid_raises_error(self) -> None:
+        """Test that an invalid parent UUID raises ManifestParseError."""
+        uuid1 = uuid4()
+        with pytest.raises(ManifestParseError, match="Invalid parent UUID"):
+            parse_manifest(
+                f'{{"layers": {{"{uuid1}": {{ "parent": "not-a-uuid" }}}}, "default": "{uuid1}"}}'
+            )
+
+    def test_tag_not_string_raises_error(self) -> None:
+        """Test that a non-string tag raises ManifestParseError."""
+        uuid1 = uuid4()
+        with pytest.raises(ManifestParseError, match="Tag in layer.*must be a string"):
+            parse_manifest(f'{{"layers": {{"{uuid1}": {{ "tag": 123 }}}}, "default": "{uuid1}"}}')
+
+    def test_default_invalid_uuid_raises_error(self) -> None:
+        """Test that an invalid default UUID raises ManifestParseError."""
+        uuid1 = uuid4()
+        with pytest.raises(ManifestParseError, match="Invalid default UUID"):
+            parse_manifest(f'{{"layers": {{"{uuid1}": {{}}}}, "default": "not-a-uuid"}}')
+
+    def test_layer_with_empty_dict_success(self) -> None:
+        """Test that a layer with an empty dict parses successfully."""
+        uuid1 = uuid4()
+        manifest = parse_manifest(f'{{"layers": {{"{uuid1}": {{}}}}, "default": "{uuid1}"}}')
+        assert uuid1 in manifest.layers
+        assert manifest.layers[uuid1].parent is None
+        assert manifest.layers[uuid1].tag is None
+
+    def test_tag_explicitly_null_success_with_none(self) -> None:
+        """Test that a tag explicitly set to null parses as None."""
+        uuid1 = uuid4()
+        manifest = parse_manifest(
+            f'{{"layers": {{"{uuid1}": {{ "tag": null }}}}, "default": "{uuid1}"}}'
+        )
+        assert manifest.layers[uuid1].tag is None
+
+
+class TestManifestResolveChainAndEdgeCases:
+    """Tests for resolve_chain, get_children, get_root_layers, lookup_by_tag, and serialize."""
+
+    def test_resolve_chain_with_broken_chain_raises_value_error(self) -> None:
+        """Test that resolve_chain raises ValueError when parent chain is broken."""
+        root_uuid = uuid4()
+        mid_uuid = uuid4()
+        leaf_uuid = uuid4()
+        # mid_uuid references a parent that exists, but leaf_uuid references
+        # a parent that is NOT in the layers dict
+        missing_uuid = uuid4()
+        manifest = Manifest(
+            layers={
+                root_uuid: Layer(tag="root"),
+                mid_uuid: Layer(parent=root_uuid, tag="mid"),
+                leaf_uuid: Layer(parent=missing_uuid, tag="leaf"),
+            },
+            default=mid_uuid,
+        )
+        with pytest.raises(ValueError, match="Parent layer.*not found"):
+            manifest.resolve_chain(leaf_uuid)
+
+    def test_get_children_with_missing_uuid_returns_empty_list(self) -> None:
+        """Test that get_children with a UUID not in layers returns empty list."""
+        uuid1 = uuid4()
+        missing_uuid = uuid4()
+        manifest = Manifest(
+            layers={uuid1: Layer(tag="v1")},
+            default=uuid1,
+        )
+        children = manifest.get_children(missing_uuid)
+        assert children == []
+
+    def test_get_root_layers_with_multiple_roots(self) -> None:
+        """Test get_root_layers returns all root layers when there are multiple."""
+        root1 = uuid4()
+        root2 = uuid4()
+        child = uuid4()
+        manifest = Manifest(
+            layers={
+                root1: Layer(tag="root1"),
+                root2: Layer(tag="root2"),
+                child: Layer(parent=root1, tag="child"),
+            },
+            default=child,
+        )
+        roots = manifest.get_root_layers()
+        assert set(roots) == {root1, root2}
+
+    def test_lookup_by_tag_with_empty_string_raises_manifest_parse_error(self) -> None:
+        """Test that lookup_by_tag with empty string raises ValueError."""
+        uuid1 = uuid4()
+        manifest = Manifest(
+            layers={uuid1: Layer(tag="v1")},
+            default=uuid1,
+        )
+        # lookup_by_tag raises ValueError, not ManifestParseError
+        with pytest.raises(ValueError, match="No layer found"):
+            manifest.lookup_by_tag("")
+
+    @pytest.mark.xfail(
+        reason=(
+            "serialize_manifest uses empty string for default=None, "
+            "which cannot round-trip through parse_manifest "
+            "since parse_manifest requires a valid UUID for default"
+        ),
+        strict=True,
+    )
+    def test_serialize_manifest_with_default_none(self) -> None:
+        """Test serialize_manifest with default=None cannot round-trip (known bug)."""
+        uuid1 = uuid4()
+        manifest = Manifest(
+            layers={uuid1: Layer(tag="v1")},
+            default=None,
+        )
+        json_str = serialize_manifest(manifest)
+        # This will fail because parse_manifest requires a valid UUID for default,
+        # but serialize_manifest writes an empty string for None
+        reparsed = parse_manifest(json_str)
+        assert reparsed.default is None
+
+    def test_manifest_parse_error_with_details(self) -> None:
+        """Test ManifestParseError with details attribute."""
+        error = ManifestParseError("Main message", details="Extra context")
+        assert error.message == "Main message"
+        assert error.details == "Extra context"
+        assert str(error) == "Main message: Extra context"
+
+    def test_manifest_parse_error_without_details(self) -> None:
+        """Test ManifestParseError without details attribute."""
+        error = ManifestParseError("Main message")
+        assert error.message == "Main message"
+        assert error.details is None
+        assert str(error) == "Main message"

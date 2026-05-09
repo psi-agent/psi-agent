@@ -1296,3 +1296,315 @@ class TestTranslateAnthropicStreamThinking:
         assert '"finish_reason": "tool_calls"' in chunks[4]
         # Last chunk is [DONE]
         assert chunks[5] == "data: [DONE]\n\n"
+
+
+class TestToolCallArgumentsEdgeCases:
+    """Tests for tool_call arguments edge cases in translation."""
+
+    def test_invalid_json_arguments(self) -> None:
+        """Test tool_call with invalid JSON arguments falls back to empty dict."""
+        openai_request = {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "bash", "arguments": "not valid json"},
+                        }
+                    ],
+                },
+            ],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assistant_msg = result["messages"][0]
+        tool_block = assistant_msg["content"][0]
+        assert tool_block["type"] == "tool_use"
+        assert tool_block["input"] == {}
+
+    def test_none_arguments(self) -> None:
+        """Test tool_call with None arguments falls back to empty dict."""
+        openai_request = {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "bash", "arguments": None},
+                        }
+                    ],
+                },
+            ],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assistant_msg = result["messages"][0]
+        tool_block = assistant_msg["content"][0]
+        assert tool_block["type"] == "tool_use"
+        assert tool_block["input"] == {}
+
+    def test_empty_string_arguments(self) -> None:
+        """Test tool_call with empty string arguments falls back to empty dict."""
+        openai_request = {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "bash", "arguments": ""},
+                        }
+                    ],
+                },
+            ],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assistant_msg = result["messages"][0]
+        tool_block = assistant_msg["content"][0]
+        assert tool_block["type"] == "tool_use"
+        assert tool_block["input"] == {}
+
+
+class TestToolResultNoneContent:
+    """Tests for tool result with None content."""
+
+    def test_tool_result_none_content(self) -> None:
+        """Test tool result with None content uses empty string."""
+        openai_request = {
+            "messages": [
+                {
+                    "role": "tool",
+                    "tool_call_id": "call_1",
+                    "content": None,
+                },
+            ],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        tool_msg = result["messages"][0]
+        assert tool_msg["content"][0]["type"] == "tool_result"
+        assert tool_msg["content"][0]["content"] == ""
+
+
+class TestUnknownToolFormat:
+    """Tests for unknown tool format passthrough."""
+
+    def test_unknown_tool_format_passthrough(self) -> None:
+        """Test tool with unknown format is passed through unchanged."""
+        openai_request = {
+            "messages": [{"role": "user", "content": "Hello"}],
+            "tools": [
+                {"custom_key": "custom_value", "name": "custom_tool"},
+            ],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assert result["tools"][0] == {"custom_key": "custom_value", "name": "custom_tool"}
+
+
+class TestAssistantWhitespaceContentWithToolCalls:
+    """Tests for assistant message with whitespace-only content and tool_calls."""
+
+    def test_whitespace_only_content_with_tool_calls(self) -> None:
+        """Test whitespace-only content with tool_calls produces no text block."""
+        openai_request = {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "   ",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "bash", "arguments": '{"cmd": "ls"}'},
+                        }
+                    ],
+                },
+            ],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assistant_msg = result["messages"][0]
+        # Should only have tool_use block, no text block
+        assert len(assistant_msg["content"]) == 1
+        assert assistant_msg["content"][0]["type"] == "tool_use"
+
+    def test_empty_string_content_with_tool_calls(self) -> None:
+        """Test empty string content with tool_calls produces no text block."""
+        openai_request = {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "type": "function",
+                            "function": {"name": "bash", "arguments": '{"cmd": "ls"}'},
+                        }
+                    ],
+                },
+            ],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        assistant_msg = result["messages"][0]
+        assert len(assistant_msg["content"]) == 1
+        assert assistant_msg["content"][0]["type"] == "tool_use"
+
+
+class TestAnthropicResponseMissingFields:
+    """Tests for Anthropic response with missing optional fields."""
+
+    def test_no_usage_field(self) -> None:
+        """Test response with no usage defaults to 0 tokens."""
+        anthropic_response = {
+            "id": "msg_123",
+            "content": [{"type": "text", "text": "Hello"}],
+        }
+
+        result = translate_anthropic_to_openai(anthropic_response)
+
+        assert result["usage"]["prompt_tokens"] == 0
+        assert result["usage"]["completion_tokens"] == 0
+        assert result["usage"]["total_tokens"] == 0
+
+    def test_no_stop_reason(self) -> None:
+        """Test response with no stop_reason defaults to end_turn -> stop."""
+        anthropic_response = {
+            "id": "msg_123",
+            "content": [{"type": "text", "text": "Hello"}],
+        }
+
+        result = translate_anthropic_to_openai(anthropic_response)
+
+        assert result["choices"][0]["finish_reason"] == "stop"
+
+    def test_unknown_stop_reason(self) -> None:
+        """Test response with unknown stop_reason defaults to stop."""
+        anthropic_response = {
+            "id": "msg_123",
+            "content": [{"type": "text", "text": "Hello"}],
+            "stop_reason": "unknown_reason",
+        }
+
+        result = translate_anthropic_to_openai(anthropic_response)
+
+        assert result["choices"][0]["finish_reason"] == "stop"
+
+    def test_no_id_field(self) -> None:
+        """Test response with no id defaults to empty string."""
+        anthropic_response = {
+            "content": [{"type": "text", "text": "Hello"}],
+        }
+
+        result = translate_anthropic_to_openai(anthropic_response)
+
+        assert result["id"] == ""
+
+    def test_no_model_field(self) -> None:
+        """Test response with no model defaults to empty string."""
+        anthropic_response = {
+            "id": "msg_123",
+            "content": [{"type": "text", "text": "Hello"}],
+        }
+
+        result = translate_anthropic_to_openai(anthropic_response)
+
+        assert result["model"] == ""
+
+    def test_empty_content_list(self) -> None:
+        """Test response with empty content list results in None content."""
+        anthropic_response = {
+            "id": "msg_123",
+            "content": [],
+        }
+
+        result = translate_anthropic_to_openai(anthropic_response)
+
+        assert result["choices"][0]["message"]["content"] is None
+
+
+class TestMultipleSystemMessages:
+    """Tests for handling multiple system messages."""
+
+    def test_multiple_system_messages(self) -> None:
+        """Test first system message extracted, second kept in messages."""
+        openai_request = {
+            "messages": [
+                {"role": "system", "content": "First system message"},
+                {"role": "system", "content": "Second system message"},
+                {"role": "user", "content": "Hello"},
+            ],
+        }
+
+        result = translate_openai_to_anthropic(openai_request)
+
+        # First system message extracted as system parameter
+        assert result["system"] == "First system message"
+        # Second system message remains in messages list
+        system_msgs = [m for m in result["messages"] if m.get("role") == "system"]
+        assert len(system_msgs) == 1
+
+
+class TestSSEStreamEdgeCases:
+    """Tests for SSE stream edge cases."""
+
+    async def test_sse_event_missing_event_line(self) -> None:
+        """Test SSE event with data but no event line is skipped."""
+
+        async def mock_stream() -> AsyncGenerator[str]:
+            yield 'data: {"delta": {"text": "Hello"}}\n\n'
+
+        chunks = []
+        async for chunk in translate_anthropic_stream(mock_stream()):
+            chunks.append(chunk)
+
+        # No event type means no output
+        assert len(chunks) == 0
+
+    async def test_empty_stream(self) -> None:
+        """Test empty stream produces no output."""
+
+        async def mock_stream() -> AsyncGenerator[str]:
+            return
+            yield  # Make this an async generator
+
+        chunks = []
+        async for chunk in translate_anthropic_stream(mock_stream()):
+            chunks.append(chunk)
+
+        assert len(chunks) == 0
+
+    async def test_ping_event_skipped(self) -> None:
+        """Test ping event is skipped."""
+        import json
+
+        async def mock_stream() -> AsyncGenerator[str]:
+            msg_start = json.dumps({"message": {"id": "msg_123", "model": "claude-3"}})
+            yield f"event: message_start\ndata: {msg_start}\n\n"
+            yield "event: ping\ndata: {}\n\n"
+            yield "event: message_stop\ndata: {}\n\n"
+
+        chunks = []
+        async for chunk in translate_anthropic_stream(mock_stream()):
+            chunks.append(chunk)
+
+        # Should have: message_start, message_stop (ping skipped)
+        assert len(chunks) == 2

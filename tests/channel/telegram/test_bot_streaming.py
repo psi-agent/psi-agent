@@ -1532,3 +1532,213 @@ class TestTypingIndicatorPeriodically:
 
         # Task should be cancelled
         assert task.cancelled()
+
+
+class TestTelegramBotStop:
+    """Tests for TelegramBot._stop method."""
+
+    @pytest.mark.asyncio
+    async def test_stop_with_running_application(self):
+        """Test _stop gracefully stops a running application."""
+        config = TelegramConfig(token="test-token", session_socket="/tmp/test.sock", stream=True)
+        bot = TelegramBot(config)
+
+        # Create a mock application
+        mock_app = MagicMock()
+        mock_app.updater = MagicMock()
+        mock_app.updater.stop = AsyncMock()
+        mock_app.stop = AsyncMock()
+        mock_app.shutdown = AsyncMock()
+
+        bot._app = mock_app
+
+        await bot._stop()
+
+        mock_app.updater.stop.assert_called_once()
+        mock_app.stop.assert_called_once()
+        mock_app.shutdown.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_stop_when_app_is_none(self):
+        """Test _stop does nothing when app is None."""
+        config = TelegramConfig(token="test-token", session_socket="/tmp/test.sock", stream=True)
+        bot = TelegramBot(config)
+        bot._app = None
+
+        # Should not raise any error
+        await bot._stop()
+
+
+class TestSplitMessageEdgeCases:
+    """Tests for split_message edge cases."""
+
+    def test_split_newline_at_midpoint(self):
+        """Test split with newline exactly at midpoint of max_length."""
+        max_len = 10
+        # Newline at position 5 (midpoint of 10)
+        # Condition is newline_pos > max_length // 2, so 5 > 5 is False
+        # Newline at midpoint is NOT used for split
+        text = "aaaaa\nbbbbb"
+        result = split_message(text, max_length=max_len)
+        assert len(result) == 2
+        # Since newline at midpoint is not used, split happens at max_length
+        assert len(result[0]) == max_len
+        assert "".join(result) == text
+
+    def test_split_space_at_midpoint(self):
+        """Test split with space exactly at midpoint of max_length."""
+        max_len = 10
+        # Space at position 5 (midpoint of 10), no newline
+        # Condition is space_pos > max_length // 2, so 5 > 5 is False
+        # Space at midpoint is NOT used for split
+        text = "aaaaa bbbbb"
+        result = split_message(text, max_length=max_len)
+        assert len(result) == 2
+        # Since space at midpoint is not used, split happens at max_length
+        assert len(result[0]) == max_len
+        assert "".join(result) == text
+
+    def test_split_very_small_max_length(self):
+        """Test split with very small max_length."""
+        text = "hello world"
+        result = split_message(text, max_length=5)
+        # Should split into chunks of at most 5 characters
+        for chunk in result:
+            assert len(chunk) <= 5
+        assert "".join(result) == text
+
+    def test_split_max_length_one(self):
+        """Test split with max_length of 1."""
+        text = "abc"
+        result = split_message(text, max_length=1)
+        assert result == ["a", "b", "c"]
+        assert "".join(result) == text
+
+
+class TestTelegramBotStreamingFallback:
+    """Tests for TelegramBot streaming fallback and handler edge cases."""
+
+    @pytest.mark.asyncio
+    async def test_streaming_empty_buffer_nonempty_response_fallback(self):
+        """Test streaming with empty content_buffer and non-empty response uses fallback."""
+        config = TelegramConfig(
+            token="test-token", session_socket="/tmp/test.sock", stream=True, stream_interval=1.0
+        )
+        bot = TelegramBot(config)
+
+        mock_message = AsyncMock()
+        mock_message.text = "Hello"
+        mock_message.reply_text = AsyncMock()
+
+        mock_sent_message = AsyncMock()
+        mock_sent_message.edit_text = AsyncMock()
+        mock_message.reply_text.return_value = mock_sent_message
+
+        mock_update = MagicMock()
+        mock_update.message = mock_message
+        mock_update.effective_user = MagicMock(id=123)
+
+        final_content = None
+
+        async def mock_edit(text: str) -> None:
+            nonlocal final_content
+            final_content = text
+
+        mock_sent_message.edit_text.side_effect = mock_edit
+
+        # Mock streaming that returns content without calling on_chunk
+        async def mock_stream(_message: str, _user_id: str, on_chunk) -> str:
+            # Don't call on_chunk - buffer stays empty
+            return "Fallback content"
+
+        with patch.object(bot.client, "send_message_stream", mock_stream):
+            async with bot.client:
+                await bot._handle_message_streaming(mock_update, "telegram:123", "Hello")
+
+        # When buffer is empty, final_content should use response as fallback
+        assert final_content == "Fallback content"
+
+    @pytest.mark.asyncio
+    async def test_non_streaming_with_three_plus_split_chunks(self):
+        """Test non-streaming handler with 3+ split chunks."""
+        config = TelegramConfig(token="test-token", session_socket="/tmp/test.sock", stream=False)
+        bot = TelegramBot(config)
+
+        mock_message = AsyncMock()
+        mock_message.text = "Hello"
+        mock_message.reply_text = AsyncMock()
+
+        mock_update = MagicMock()
+        mock_update.message = mock_message
+        mock_update.effective_user = MagicMock(id=123)
+
+        # Create a response that will split into 3+ chunks
+        long_response = "a" * 10000  # Will split into 3 chunks at 4096 limit
+        with patch.object(bot.client, "send_message", AsyncMock(return_value=long_response)):
+            async with bot.client:
+                await bot._handle_message_non_streaming(mock_update, "telegram:123", "Hello")
+
+        # Should be called 3 times for split message
+        assert mock_message.reply_text.call_count == 3
+
+    @pytest.mark.asyncio
+    async def test_start_without_proxy(self):
+        """Test start registers handlers without proxy configuration."""
+        config = TelegramConfig(token="test-token", session_socket="/tmp/test.sock", stream=True)
+        bot = TelegramBot(config)
+
+        # Mock the Application building to succeed
+        mock_app = MagicMock()
+        mock_app.initialize = AsyncMock()
+        mock_app.start = AsyncMock()
+        mock_app.stop = AsyncMock()
+        mock_app.shutdown = AsyncMock()
+        mock_app.add_handler = MagicMock()
+        mock_app.updater = MagicMock()
+        mock_app.updater.start_polling = AsyncMock()
+        mock_app.updater.stop = AsyncMock()
+
+        mock_builder = MagicMock()
+        mock_builder.token.return_value = mock_builder
+        mock_builder.build.return_value = mock_app
+
+        # Set stop_event so start() doesn't hang
+        bot._stop_event.set()
+
+        with patch("psi_agent.channel.telegram.bot.Application.builder", return_value=mock_builder):
+            await bot.start()
+
+        # Verify handlers were registered
+        assert mock_app.add_handler.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_start_registers_handlers(self):
+        """Test start registers both command and message handlers."""
+        config = TelegramConfig(token="test-token", session_socket="/tmp/test.sock", stream=True)
+        bot = TelegramBot(config)
+
+        mock_app = MagicMock()
+        mock_app.initialize = AsyncMock()
+        mock_app.start = AsyncMock()
+        mock_app.stop = AsyncMock()
+        mock_app.shutdown = AsyncMock()
+        mock_app.add_handler = MagicMock()
+        mock_app.updater = MagicMock()
+        mock_app.updater.start_polling = AsyncMock()
+        mock_app.updater.stop = AsyncMock()
+
+        mock_builder = MagicMock()
+        mock_builder.token.return_value = mock_builder
+        mock_builder.build.return_value = mock_app
+
+        bot._stop_event.set()
+
+        with patch("psi_agent.channel.telegram.bot.Application.builder", return_value=mock_builder):
+            await bot.start()
+
+        # Should register 2 handlers: /start command and text message handler
+        assert mock_app.add_handler.call_count == 2
+        # First handler should be a CommandHandler
+        from telegram.ext import CommandHandler
+
+        assert isinstance(mock_app.add_handler.call_args_list[0][0][0], CommandHandler)

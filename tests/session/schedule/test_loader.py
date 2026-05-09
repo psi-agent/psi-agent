@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tempfile
+from datetime import datetime
 
 import anyio
 import pytest
@@ -171,3 +172,57 @@ Task 2 content.""")
             schedules = await load_schedules(workspace)
 
             assert schedules == []
+
+
+class TestParseFrontmatterEdgeCases:
+    """Edge case tests for parse_frontmatter."""
+
+    def test_invalid_cron_expression_raises_from_croniter(self) -> None:
+        """Test that an invalid cron expression in frontmatter is parsed but fails at croniter."""
+        content = """---
+name: bad-cron
+cron: "not a valid cron"
+---
+
+Content."""
+        frontmatter, _remaining = parse_frontmatter(content)
+
+        # parse_frontmatter itself does not validate cron; it just parses the text
+        assert frontmatter["cron"] == "not a valid cron"
+        # But creating a Schedule with it will fail at get_next_run
+        import croniter
+
+        with pytest.raises(croniter.CroniterBadCronError):
+            croniter.croniter(frontmatter["cron"], datetime.now())
+
+    def test_frontmatter_with_blank_lines_between_pairs(self) -> None:
+        """Test frontmatter with blank lines between key-value pairs."""
+        content = """---
+name: test-task
+
+description: A test task
+
+cron: "0 9 * * *"
+---
+
+Content."""
+        frontmatter, remaining = parse_frontmatter(content)
+
+        assert frontmatter["name"] == "test-task"
+        assert frontmatter["description"] == "A test task"
+        assert frontmatter["cron"] == "0 9 * * *"
+
+    def test_frontmatter_value_containing_hash_character(self) -> None:
+        """Test frontmatter value containing hash character."""
+        content = """---
+name: task-with-hash
+description: "Use # for comments"
+cron: "0 9 * * *"
+---
+
+Content."""
+        frontmatter, remaining = parse_frontmatter(content)
+
+        assert frontmatter["name"] == "task-with-hash"
+        assert frontmatter["description"] == "Use # for comments"
+        assert frontmatter["cron"] == "0 9 * * *"

@@ -326,3 +326,242 @@ class TestReplClient:
 
                 assert "Error" in result
                 assert "timeout" in result.lower()
+
+
+class TestReplClientNullEmptyContent:
+    """Tests for ReplClient handling null/empty content in responses."""
+
+    @pytest.fixture
+    def config(self) -> ReplConfig:
+        """Create test config."""
+        return ReplConfig(session_socket="/tmp/test.sock")
+
+    @pytest.fixture
+    def client(self, config: ReplConfig) -> ReplClient:
+        """Create test client."""
+        return ReplClient(config)
+
+    @pytest.mark.asyncio
+    async def test_streaming_null_content_in_delta_skipped(self, client: ReplClient) -> None:
+        """Null content in streaming delta is skipped (not appended)."""
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"content":null}}]}\n',
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        with (
+            patch("aiohttp.UnixConnector") as mock_connector,
+            patch("aiohttp.ClientSession") as mock_session,
+        ):
+            mock_connector_instance = AsyncMock()
+            mock_connector_instance.close = AsyncMock()
+            mock_connector.return_value = mock_connector_instance
+
+            mock_session_instance = MagicMock()
+            mock_session_instance.post = MagicMock(
+                return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_response))
+            )
+            mock_session_instance.close = AsyncMock()
+            mock_session.return_value = mock_session_instance
+
+            async with client:
+                result = await client.send_message_stream("Hi")
+                # null content is skipped, only "Hello" is returned
+                assert result == "Hello"
+
+    @pytest.mark.asyncio
+    async def test_streaming_empty_string_content_in_delta_handled(
+        self, client: ReplClient
+    ) -> None:
+        """Empty string content in streaming delta is handled."""
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"content":""}}]}\n',
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        with (
+            patch("aiohttp.UnixConnector") as mock_connector,
+            patch("aiohttp.ClientSession") as mock_session,
+        ):
+            mock_connector_instance = AsyncMock()
+            mock_connector_instance.close = AsyncMock()
+            mock_connector.return_value = mock_connector_instance
+
+            mock_session_instance = MagicMock()
+            mock_session_instance.post = MagicMock(
+                return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_response))
+            )
+            mock_session_instance.close = AsyncMock()
+            mock_session.return_value = mock_session_instance
+
+            async with client:
+                result = await client.send_message_stream("Hi")
+                # Empty string is appended but doesn't affect result
+                assert result == "Hello"
+
+    @pytest.mark.asyncio
+    async def test_non_streaming_null_content_returns_empty_string(
+        self, client: ReplClient
+    ) -> None:
+        """Null content in non-streaming response returns empty string."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": None}}]})
+
+        with (
+            patch("aiohttp.UnixConnector") as mock_connector,
+            patch("aiohttp.ClientSession") as mock_session,
+        ):
+            mock_connector_instance = AsyncMock()
+            mock_connector_instance.close = AsyncMock()
+            mock_connector.return_value = mock_connector_instance
+
+            mock_session_instance = MagicMock()
+            mock_session_instance.post = MagicMock(
+                return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_response))
+            )
+            mock_session_instance.close = AsyncMock()
+            mock_session.return_value = mock_session_instance
+
+            async with client:
+                result = await client.send_message("Hi")
+                assert result == ""
+
+
+class TestReplClientReasoningAndMissingFields:
+    """Tests for ReplClient handling reasoning field and missing fields."""
+
+    @pytest.fixture
+    def config(self) -> ReplConfig:
+        """Create test config."""
+        return ReplConfig(session_socket="/tmp/test.sock")
+
+    @pytest.fixture
+    def client(self, config: ReplConfig) -> ReplClient:
+        """Create test client."""
+        return ReplClient(config)
+
+    @pytest.mark.asyncio
+    async def test_streaming_reasoning_field_handled(self, client: ReplClient) -> None:
+        """Reasoning field in streaming delta is handled without crash."""
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"reasoning":"thinking...","content":"Hello"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        with (
+            patch("aiohttp.UnixConnector") as mock_connector,
+            patch("aiohttp.ClientSession") as mock_session,
+        ):
+            mock_connector_instance = AsyncMock()
+            mock_connector_instance.close = AsyncMock()
+            mock_connector.return_value = mock_connector_instance
+
+            mock_session_instance = MagicMock()
+            mock_session_instance.post = MagicMock(
+                return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_response))
+            )
+            mock_session_instance.close = AsyncMock()
+            mock_session.return_value = mock_session_instance
+
+            async with client:
+                result = await client.send_message_stream("Hi")
+                assert result == "Hello"
+
+    @pytest.mark.asyncio
+    async def test_streaming_empty_choices_list_skipped(self, client: ReplClient) -> None:
+        """Empty choices list in streaming chunk is skipped."""
+        sse_lines = [
+            b'data: {"choices":[]}\n',
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        with (
+            patch("aiohttp.UnixConnector") as mock_connector,
+            patch("aiohttp.ClientSession") as mock_session,
+        ):
+            mock_connector_instance = AsyncMock()
+            mock_connector_instance.close = AsyncMock()
+            mock_connector.return_value = mock_connector_instance
+
+            mock_session_instance = MagicMock()
+            mock_session_instance.post = MagicMock(
+                return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_response))
+            )
+            mock_session_instance.close = AsyncMock()
+            mock_session.return_value = mock_session_instance
+
+            async with client:
+                result = await client.send_message_stream("Hi")
+                assert result == "Hello"
+
+    @pytest.mark.asyncio
+    async def test_streaming_missing_delta_key_no_crash(self, client: ReplClient) -> None:
+        """Missing delta key in streaming chunk does not crash."""
+        sse_lines = [
+            b'data: {"choices":[{}]}\n',
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        with (
+            patch("aiohttp.UnixConnector") as mock_connector,
+            patch("aiohttp.ClientSession") as mock_session,
+        ):
+            mock_connector_instance = AsyncMock()
+            mock_connector_instance.close = AsyncMock()
+            mock_connector.return_value = mock_connector_instance
+
+            mock_session_instance = MagicMock()
+            mock_session_instance.post = MagicMock(
+                return_value=MagicMock(__aenter__=AsyncMock(return_value=mock_response))
+            )
+            mock_session_instance.close = AsyncMock()
+            mock_session.return_value = mock_session_instance
+
+            async with client:
+                result = await client.send_message_stream("Hi")
+                assert result == "Hello"

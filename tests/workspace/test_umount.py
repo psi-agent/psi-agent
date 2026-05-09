@@ -169,3 +169,72 @@ class TestUmountHelperFunctions:
         with patch.object(anyio.Path, "iterdir", side_effect=PermissionError("denied")):
             # Should not raise, just log warning
             await _cleanup_directory(test_dir)
+
+
+class TestUmountMissingKeys:
+    """Tests for umount with missing keys in mount info.
+
+    Bug: When squashfs_mount or upper_dir keys are missing from mount info,
+    the code raises KeyError instead of UmountError.
+    """
+
+    @pytest.mark.xfail(
+        reason="Bug: KeyError instead of UmountError when squashfs_mount key is missing",
+        strict=True,
+    )
+    async def test_umount_missing_squashfs_mount_key(self, tmp_path) -> None:
+        """Umount raises UmountError when squashfs_mount key is missing."""
+        mount_dir = anyio.Path(tmp_path) / "mounted"
+        await mount_dir.mkdir()
+
+        # Create mount info without squashfs_mount key
+        mount_info = mount_dir / ".psi-mount-info"
+        mount_info_content = f"{{'upper_dir': '{tmp_path}/upper', 'work_dir': '{tmp_path}/work'}}"
+        await mount_info.write_text(mount_info_content)
+
+        with pytest.raises(UmountError):
+            await umount(mount_dir)
+
+    @pytest.mark.xfail(
+        reason="Bug: KeyError instead of UmountError when upper_dir key is missing", strict=True
+    )
+    async def test_umount_missing_upper_dir_key(self, tmp_path) -> None:
+        """Umount raises UmountError when upper_dir key is missing."""
+        mount_dir = anyio.Path(tmp_path) / "mounted"
+        await mount_dir.mkdir()
+
+        # Create mount info without upper_dir key
+        mount_info = mount_dir / ".psi-mount-info"
+        mount_info_content = (
+            f"{{'squashfs_mount': '{tmp_path}/squashfs', 'work_dir': '{tmp_path}/work'}}"
+        )
+        await mount_info.write_text(mount_info_content)
+
+        with pytest.raises(UmountError):
+            await umount(mount_dir)
+
+
+class TestCleanupDirectoryReadOnlyFiles:
+    """Tests for _cleanup_directory with read-only files."""
+
+    async def test_cleanup_directory_with_read_only_files(self, tmp_path) -> None:
+        """_cleanup_directory handles read-only files gracefully."""
+        from psi_agent.workspace.umount.api import _cleanup_directory
+
+        test_dir = anyio.Path(tmp_path) / "test_dir"
+        await test_dir.mkdir()
+
+        # Create a read-only file
+        test_file = test_dir / "readonly.txt"
+        await test_file.write_text("read-only content")
+
+        # Make file read-only
+        import os
+
+        os.chmod(str(test_file), 0o444)
+
+        # _cleanup_directory should handle this gracefully (logs warning)
+        await _cleanup_directory(test_dir)
+
+        # Directory may or may not be fully removed depending on permissions,
+        # but the function should not raise an exception

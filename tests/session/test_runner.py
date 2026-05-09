@@ -1550,3 +1550,582 @@ class TestParseStreamingResponse:
         with pytest.raises(RuntimeError, match="AI component error: Authentication failed"):
             async for _ in runner._parse_streaming_response(mock_response):
                 pass
+
+
+class TestRunConversationMultiRoundToolCalls:
+    """Tests for _run_conversation with multiple rounds of tool calls (T10)."""
+
+    @pytest.mark.asyncio
+    async def test_two_rounds_of_tool_calls(self, config):
+        """Test _run_conversation with two rounds of tool calls.
+
+        LLM returns tool call, then after receiving tool result,
+        returns another tool call, then finally returns text.
+        """
+        runner = SessionRunner(config)
+        async with runner:
+            # Create a tool
+            tool_file = config.tools_dir() / "echo.py"
+            await tool_file.write_text(
+                """
+async def tool(message: str) -> str:
+    '''Echo tool.
+
+    Args:
+        message: The message to echo.
+
+    Returns:
+        The echoed message.
+    '''
+    return message
+"""
+            )
+            tool_schema = await load_tool_from_file(tool_file)
+            if tool_schema:
+                runner.registry.register(tool_schema)
+
+            # First streaming response: tool call round 1
+            sse_lines_round1 = [
+                b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1",'
+                b'"function":{"name":"echo","arguments":"{\\"mes"}}]}}]}\n',
+                b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,'
+                b'"function":{"arguments":"sage\\": \\"hello\\"}"}}]}}\n',
+                b"data: [DONE]\n",
+            ]
+
+            # Second streaming response: tool call round 2
+            sse_lines_round2 = [
+                b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_2",'
+                b'"function":{"name":"echo","arguments":"{\\"mes"}}]}}]}\n',
+                b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,'
+                b'"function":{"arguments":"sage\\": \\"world\\"}"}}]}}\n',
+                b"data: [DONE]\n",
+            ]
+
+            # Third streaming response: final text
+            sse_lines_final = [
+                b'data: {"choices":[{"delta":{"content":"All done"}}]}\n',
+                b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+                b"data: [DONE]\n",
+            ]
+
+            call_count = 0
+
+            def make_async_iter(lines):
+                async def async_iter():
+                    for line in lines:
+                        yield line
+
+                return async_iter()
+
+            def mock_post_side_effect(*_args, **_kwargs):
+                nonlocal call_count
+                call_count += 1
+
+                mock_response = AsyncMock()
+                mock_response.status = 200
+                mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+                mock_response.__aexit__ = AsyncMock(return_value=None)
+
+                if call_count == 1:
+                    mock_response.content = make_async_iter(sse_lines_round1)
+                elif call_count == 2:
+                    mock_response.content = make_async_iter(sse_lines_round2)
+                else:
+                    mock_response.content = make_async_iter(sse_lines_final)
+
+                return mock_response
+
+            with patch.object(runner.client, "post", side_effect=mock_post_side_effect):
+                messages = [{"role": "user", "content": "Test multi-round"}]
+                result = await runner._run_conversation(messages)
+
+                # Should have made 3 calls (2 tool call rounds + final response)
+                assert call_count == 3
+                assert "choices" in result
+                content = result["choices"][0]["message"]["content"]
+                # Both tool calls should have thinking blocks
+                assert content.count("<thinking>") == 2
+                assert "[Tool: echo]" in content
+                assert "All done" in content
+
+    @pytest.mark.asyncio
+    async def test_tool_name_not_in_registry(self, config):
+        """Test tool call with tool name not in registry returns error message.
+
+        The conversation should continue after the error.
+        """
+        runner = SessionRunner(config)
+        async with runner:
+            # No tools registered - any tool call will fail
+
+            # First streaming response: tool call with unknown tool
+            sse_lines_tool = [
+                b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1",'
+                b'"function":{"name":"nonexistent_tool","arguments":"{}"}}]}}]}\n',
+                b"data: [DONE]\n",
+            ]
+
+            # Second streaming response: final text after error
+            sse_lines_final = [
+                b'data: {"choices":[{"delta":{"content":"I see the tool failed"}}]}\n',
+                b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+                b"data: [DONE]\n",
+            ]
+
+            call_count = 0
+
+            def make_async_iter(lines):
+                async def async_iter():
+                    for line in lines:
+                        yield line
+
+                return async_iter()
+
+            def mock_post_side_effect(*_args, **_kwargs):
+                nonlocal call_count
+                call_count += 1
+
+                mock_response = AsyncMock()
+                mock_response.status = 200
+                mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+                mock_response.__aexit__ = AsyncMock(return_value=None)
+
+                if call_count == 1:
+                    mock_response.content = make_async_iter(sse_lines_tool)
+                else:
+                    mock_response.content = make_async_iter(sse_lines_final)
+
+                return mock_response
+
+            with patch.object(runner.client, "post", side_effect=mock_post_side_effect):
+                messages = [{"role": "user", "content": "Test unknown tool"}]
+                result = await runner._run_conversation(messages)
+
+                # Should have made 2 calls (tool call + final response)
+                assert call_count == 2
+                assert "choices" in result
+                content = result["choices"][0]["message"]["content"]
+                # The thinking block should contain the error message
+                assert "nonexistent_tool" in content
+                # Conversation should have continued
+                assert "I see the tool failed" in content
+
+    @pytest.mark.asyncio
+    async def test_tool_call_with_invalid_json_arguments(self, config):
+        """Test tool call with invalid JSON arguments returns error message.
+
+        The conversation should continue after the error.
+        """
+        runner = SessionRunner(config)
+        async with runner:
+            # Create a tool
+            tool_file = config.tools_dir() / "echo.py"
+            await tool_file.write_text(
+                """
+async def tool(message: str) -> str:
+    '''Echo tool.
+
+    Args:
+        message: The message to echo.
+
+    Returns:
+        The echoed message.
+    '''
+    return message
+"""
+            )
+            tool_schema = await load_tool_from_file(tool_file)
+            if tool_schema:
+                runner.registry.register(tool_schema)
+
+            # First streaming response: tool call with invalid JSON
+            sse_lines_tool = [
+                b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1",'
+                b'"function":{"name":"echo","arguments":"invalid json!!"}}]}}]}\n',
+                b"data: [DONE]\n",
+            ]
+
+            # Second streaming response: final text
+            sse_lines_final = [
+                b'data: {"choices":[{"delta":{"content":"Continued after error"}}]}\n',
+                b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+                b"data: [DONE]\n",
+            ]
+
+            call_count = 0
+
+            def make_async_iter(lines):
+                async def async_iter():
+                    for line in lines:
+                        yield line
+
+                return async_iter()
+
+            def mock_post_side_effect(*_args, **_kwargs):
+                nonlocal call_count
+                call_count += 1
+
+                mock_response = AsyncMock()
+                mock_response.status = 200
+                mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+                mock_response.__aexit__ = AsyncMock(return_value=None)
+
+                if call_count == 1:
+                    mock_response.content = make_async_iter(sse_lines_tool)
+                else:
+                    mock_response.content = make_async_iter(sse_lines_final)
+
+                return mock_response
+
+            with patch.object(runner.client, "post", side_effect=mock_post_side_effect):
+                messages = [{"role": "user", "content": "Test invalid JSON"}]
+                result = await runner._run_conversation(messages)
+
+                # Should have made 2 calls (tool call + final response)
+                assert call_count == 2
+                assert "choices" in result
+                content = result["choices"][0]["message"]["content"]
+                # Conversation should have continued despite invalid JSON
+                assert "Continued after error" in content
+
+
+class TestRunnerWorkspaceChangeDetection:
+    """Tests for workspace change handling with additional edge cases (T11)."""
+
+    @pytest.mark.asyncio
+    async def test_tools_removed_unregistered(self, config):
+        """Test tools removed from workspace are unregistered from registry."""
+        runner = SessionRunner(config)
+        async with runner:
+            # Create and register a tool
+            tools_dir = config.tools_dir()
+            tool_file = tools_dir / "temp_tool.py"
+            await tool_file.write_text("async def tool(x: int) -> int: return x")
+            tool_schema = await load_tool_from_file(tool_file)
+            if tool_schema:
+                runner.registry.register(tool_schema)
+            assert "temp_tool" in runner.registry.tools
+
+            # Now delete the tool file to simulate removal
+            await tool_file.unlink()
+
+            changes = ChangeSummary(
+                tools_added=[],
+                tools_modified=[],
+                tools_removed=["temp_tool"],
+                skills_added=[],
+                skills_modified=[],
+                skills_removed=[],
+                schedules_added=[],
+                schedules_modified=[],
+                schedules_removed=[],
+            )
+
+            await runner._handle_workspace_changes(changes)
+
+            # Tool should be unregistered
+            assert "temp_tool" not in runner.registry.tools
+
+    @pytest.mark.asyncio
+    async def test_skills_changed_when_system_is_none(self, config):
+        """Test skills changed when system is None sets cache to None."""
+        runner = SessionRunner(config)
+        async with runner:
+            runner._system = None
+            runner._system_prompt_cache = "old prompt"
+
+            changes = ChangeSummary(
+                tools_added=[],
+                tools_modified=[],
+                tools_removed=[],
+                skills_added=["new_skill"],
+                skills_modified=[],
+                skills_removed=[],
+                schedules_added=[],
+                schedules_modified=[],
+                schedules_removed=[],
+            )
+
+            await runner._handle_workspace_changes(changes)
+
+            # System prompt cache should be set to None
+            assert runner._system_prompt_cache is None
+
+    @pytest.mark.asyncio
+    async def test_schedules_changed_when_executor_is_none(self, config):
+        """Test schedules changed when executor is None does not raise exception."""
+        runner = SessionRunner(config)
+        async with runner:
+            runner._schedule_executor = None
+            runner._system = None
+
+            changes = ChangeSummary(
+                tools_added=[],
+                tools_modified=[],
+                tools_removed=[],
+                skills_added=[],
+                skills_modified=[],
+                skills_removed=[],
+                schedules_added=["new_schedule"],
+                schedules_modified=[],
+                schedules_removed=[],
+            )
+
+            # Should not raise any exception
+            await runner._handle_workspace_changes(changes)
+
+    @pytest.mark.asyncio
+    async def test_simultaneous_tools_skills_schedules_changes(self, config):
+        """Test simultaneous tools, skills, and schedules changes are all applied."""
+        runner = SessionRunner(config)
+        async with runner:
+            # Set up a mock system
+            runner._system = MagicMock()
+            runner._system.build_system_prompt = AsyncMock(return_value="Rebuilt prompt")
+
+            # Set up a mock schedule executor
+            runner._schedule_executor = MagicMock()
+            runner._schedule_executor.add_schedule = AsyncMock()
+            runner._schedule_executor.update_schedule = AsyncMock()
+            runner._schedule_executor.remove_schedule = AsyncMock()
+
+            # Create a tool file
+            tools_dir = config.tools_dir()
+            tool_file = tools_dir / "new_tool.py"
+            await tool_file.write_text("async def tool(x: int) -> int: return x")
+
+            changes = ChangeSummary(
+                tools_added=["new_tool"],
+                tools_modified=[],
+                tools_removed=[],
+                skills_added=["skill1"],
+                skills_modified=[],
+                skills_removed=[],
+                schedules_added=["daily_task"],
+                schedules_modified=[],
+                schedules_removed=[],
+            )
+
+            mock_schedule = MagicMock()
+            with (
+                patch("psi_agent.session.runner.load_schedule", return_value=mock_schedule),
+            ):
+                await runner._handle_workspace_changes(changes)
+
+            # Tool should be loaded
+            assert "new_tool" in runner.registry.tools
+            # System prompt should be rebuilt
+            assert runner._system_prompt_cache == "Rebuilt prompt"
+            # Schedule should be added
+            runner._schedule_executor.add_schedule.assert_called_once_with(mock_schedule)
+
+
+class TestCompleteFnAndStreaming:
+    """Tests for _complete_fn and streaming edge cases (T12)."""
+
+    @pytest.mark.asyncio
+    async def test_complete_fn_with_none_content(self, config):
+        """Test _complete_fn with None content returns empty string."""
+        runner = SessionRunner(config)
+        async with runner:
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.json = AsyncMock(
+                return_value={"choices": [{"message": {"content": None}}]}
+            )
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=None)
+
+            with patch.object(runner.client, "post", return_value=mock_response):
+                result = await runner._complete_fn([{"role": "user", "content": "Summarize"}])
+
+                # message.get("content", "") returns None when key exists with None value
+                assert result is None
+
+    @pytest.mark.asyncio
+    async def test_stream_conversation_with_reasoning_content(self, config):
+        """Test _stream_conversation with reasoning content yields thinking block tags."""
+        runner = SessionRunner(config)
+        async with runner:
+            sse_lines = [
+                b'data: {"choices":[{"delta":{"reasoning":"Let me think..."}}]}\n',
+                b'data: {"choices":[{"delta":{"reasoning":" Step 1 done."}}]}\n',
+                b'data: {"choices":[{"delta":{"content":"Final answer"}}]}\n',
+                b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+                b"data: [DONE]\n",
+            ]
+
+            async def async_iter():
+                for line in sse_lines:
+                    yield line
+
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.content = async_iter()
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=None)
+
+            with patch.object(runner.client, "post", return_value=mock_response):
+                messages = [{"role": "user", "content": "Think about it"}]
+                chunks = []
+                async for chunk in runner._stream_conversation(messages):
+                    chunks.append(chunk)
+
+                full_content = "".join(chunks)
+                # Reasoning should be yielded as reasoning field
+                assert '"reasoning"' in full_content
+                assert "Let me think..." in full_content
+                assert "Step 1 done." in full_content
+                # Content should also be present
+                assert "Final answer" in full_content
+
+    @pytest.mark.asyncio
+    async def test_stream_conversation_with_both_reasoning_and_content(self, config):
+        """Test _stream_conversation with both reasoning and content in same chunk."""
+        runner = SessionRunner(config)
+        async with runner:
+            sse_lines = [
+                b'data: {"choices":[{"delta":{"reasoning":"Thinking","content":"Speaking"}}]}\n',
+                b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+                b"data: [DONE]\n",
+            ]
+
+            async def async_iter():
+                for line in sse_lines:
+                    yield line
+
+            mock_response = AsyncMock()
+            mock_response.status = 200
+            mock_response.content = async_iter()
+            mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+            mock_response.__aexit__ = AsyncMock(return_value=None)
+
+            with patch.object(runner.client, "post", return_value=mock_response):
+                messages = [{"role": "user", "content": "Hi"}]
+                chunks = []
+                async for chunk in runner._stream_conversation(messages):
+                    chunks.append(chunk)
+
+                full_content = "".join(chunks)
+                # Both reasoning and content should be present
+                assert '"reasoning"' in full_content
+                assert "Thinking" in full_content
+                assert "Speaking" in full_content
+
+    @pytest.mark.asyncio
+    async def test_stream_conversation_multiple_rounds_of_tool_calls(self, config):
+        """Test _stream_conversation with multiple rounds of tool calls."""
+        runner = SessionRunner(config)
+        async with runner:
+            # Create a tool
+            tool_file = config.tools_dir() / "echo.py"
+            await tool_file.write_text(
+                """
+async def tool(message: str) -> str:
+    '''Echo tool.
+
+    Args:
+        message: The message to echo.
+
+    Returns:
+        The echoed message.
+    '''
+    return message
+"""
+            )
+            tool_schema = await load_tool_from_file(tool_file)
+            if tool_schema:
+                runner.registry.register(tool_schema)
+
+            # Round 1: tool call
+            sse_lines_round1 = [
+                b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1",'
+                b'"function":{"name":"echo","arguments":"{\\"mes"}}]}}]}\n',
+                b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,'
+                b'"function":{"arguments":"sage\\": \\"first\\"}"}}]}}\n',
+                b"data: [DONE]\n",
+            ]
+
+            # Round 2: another tool call
+            sse_lines_round2 = [
+                b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_2",'
+                b'"function":{"name":"echo","arguments":"{\\"mes"}}]}}]}\n',
+                b'data: {"choices":[{"delta":{"tool_calls":[{"index":0,'
+                b'"function":{"arguments":"sage\\": \\"second\\"}"}}]}}\n',
+                b"data: [DONE]\n",
+            ]
+
+            # Round 3: final text
+            sse_lines_final = [
+                b'data: {"choices":[{"delta":{"content":"Complete"}}]}\n',
+                b'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n',
+                b"data: [DONE]\n",
+            ]
+
+            call_count = 0
+
+            def make_async_iter(lines):
+                async def async_iter():
+                    for line in lines:
+                        yield line
+
+                return async_iter()
+
+            def mock_post_side_effect(*_args, **_kwargs):
+                nonlocal call_count
+                call_count += 1
+
+                mock_response = AsyncMock()
+                mock_response.status = 200
+                mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+                mock_response.__aexit__ = AsyncMock(return_value=None)
+
+                if call_count == 1:
+                    mock_response.content = make_async_iter(sse_lines_round1)
+                elif call_count == 2:
+                    mock_response.content = make_async_iter(sse_lines_round2)
+                else:
+                    mock_response.content = make_async_iter(sse_lines_final)
+
+                return mock_response
+
+            with patch.object(runner.client, "post", side_effect=mock_post_side_effect):
+                messages = [{"role": "user", "content": "Test"}]
+                chunks = []
+                async for chunk in runner._stream_conversation(messages):
+                    chunks.append(chunk)
+
+                # Should have made 3 calls
+                assert call_count == 3
+                full_content = "".join(chunks)
+                # Both tool calls should appear as reasoning
+                assert full_content.count("[Tool: echo]") == 2
+                assert "Complete" in full_content
+
+
+class TestLoadSingleScheduleErrors:
+    """Tests for _load_single_schedule error handling (T13)."""
+
+    @pytest.mark.asyncio
+    async def test_nonexistent_directory_returns_none(self, config):
+        """Test _load_single_schedule with non-existent directory returns None."""
+        runner = SessionRunner(config)
+        result = await runner._load_single_schedule(anyio.Path("/nonexistent/path"))
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_invalid_task_md_returns_none(self, config):
+        """Test _load_single_schedule with invalid TASK.md returns None."""
+        runner = SessionRunner(config)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            task_dir = anyio.Path(tmpdir) / "broken_task"
+            await task_dir.mkdir()
+            # Write TASK.md without required 'cron' field
+            task_file = task_dir / "TASK.md"
+            await task_file.write_text(
+                "---\nname: broken\ndescription: No cron field\n---\nDo something\n"
+            )
+
+            result = await runner._load_single_schedule(task_dir)
+            assert result is None

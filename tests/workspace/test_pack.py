@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
 import anyio
 import pytest
 
@@ -62,3 +64,68 @@ class TestPack:
 
         with pytest.raises(PackError, match="not a directory"):
             await pack(input_file, output_file)
+
+
+class TestPackMksquashfsFailure:
+    """Tests for pack with mksquashfs subprocess failure."""
+
+    async def test_pack_mksquashfs_failure_raises_pack_error(self, tmp_path) -> None:
+        """Pack raises PackError when mksquashfs command fails."""
+        workspace = anyio.Path(tmp_path)
+        input_dir = workspace / "workspace"
+        await input_dir.mkdir()
+        await (input_dir / "test.txt").write_text("test")
+
+        output_file = workspace / "output.squashfs"
+
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_process = AsyncMock()
+            mock_process.communicate.return_value = (b"", b"mksquashfs error: failed")
+            mock_process.returncode = 1
+            mock_exec.return_value = mock_process
+
+            with pytest.raises(PackError, match="mksquashfs failed"):
+                await pack(input_dir, output_file)
+
+
+class TestPackEmptyDirectory:
+    """Tests for pack with empty directory."""
+
+    async def test_pack_empty_directory_success(self, tmp_path) -> None:
+        """Pack succeeds with empty directory."""
+        workspace = anyio.Path(tmp_path)
+        input_dir = workspace / "workspace"
+        await input_dir.mkdir()
+
+        output_file = workspace / "output.squashfs"
+
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_process = AsyncMock()
+            mock_process.communicate.return_value = (b"", b"")
+            mock_process.returncode = 0
+            mock_exec.return_value = mock_process
+
+            await pack(input_dir, output_file)
+
+            # Verify mksquashfs was called
+            mock_exec.assert_called_once()
+
+
+class TestPackError:
+    """Tests for PackError exception class."""
+
+    def test_pack_error_message_preservation(self) -> None:
+        """PackError preserves the error message."""
+        error = PackError("Test error message")
+        assert str(error) == "Test error message"
+
+    def test_pack_error_inheritance(self) -> None:
+        """PackError inherits from Exception."""
+        error = PackError("Test")
+        assert isinstance(error, Exception)
+
+    def test_pack_error_with_mksquashfs_message(self) -> None:
+        """PackError preserves mksquashfs error details."""
+        error = PackError("mksquashfs failed: permission denied")
+        assert "mksquashfs" in str(error)
+        assert "permission denied" in str(error)

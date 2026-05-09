@@ -318,3 +318,235 @@ class TestTelegramClient:
             result = await client.send_message_stream("Hi", "telegram:123")
 
             assert result == "Test"
+
+
+class TestTelegramClientNullEmptyContent:
+    """Tests for TelegramClient handling null/empty content in responses."""
+
+    @pytest.fixture
+    def null_config(self):
+        """Create test config."""
+        return TelegramConfig(token="test-token", session_socket="/tmp/test.sock")
+
+    @pytest.fixture
+    def null_client(self, null_config):
+        """Create test client."""
+        return TelegramClient(null_config)
+
+    @pytest.mark.asyncio
+    async def test_streaming_null_content_in_delta_skipped(self, null_client):
+        """Null content in streaming delta is skipped (not appended)."""
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"content":null}}]}\n',
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        async with null_client:
+            null_client._session.post = MagicMock(
+                return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_response))
+            )
+
+            result = await null_client.send_message_stream("Hi", "telegram:123")
+            assert result == "Hello"
+
+    @pytest.mark.asyncio
+    async def test_streaming_empty_string_content_in_delta_handled(self, null_client):
+        """Empty string content in streaming delta is handled."""
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"content":""}}]}\n',
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        async with null_client:
+            null_client._session.post = MagicMock(
+                return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_response))
+            )
+
+            result = await null_client.send_message_stream("Hi", "telegram:123")
+            assert result == "Hello"
+
+    @pytest.mark.asyncio
+    async def test_non_streaming_null_content_returns_empty_string(self, null_client):
+        """Null content in non-streaming response returns empty string."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": None}}]})
+
+        async with null_client:
+            null_client._session.post = MagicMock(
+                return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_response))
+            )
+
+            result = await null_client.send_message("Hi", "telegram:123")
+            assert result == ""
+
+
+class TestTelegramClientReasoningAndMissingFields:
+    """Tests for TelegramClient handling reasoning field and missing fields."""
+
+    @pytest.fixture
+    def missing_config(self):
+        """Create test config."""
+        return TelegramConfig(token="test-token", session_socket="/tmp/test.sock")
+
+    @pytest.fixture
+    def missing_client(self, missing_config):
+        """Create test client."""
+        return TelegramClient(missing_config)
+
+    @pytest.mark.asyncio
+    async def test_streaming_reasoning_field_handled(self, missing_client):
+        """Reasoning field in streaming delta is handled without crash."""
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"reasoning":"thinking...","content":"Hello"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        async with missing_client:
+            missing_client._session.post = MagicMock(
+                return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_response))
+            )
+
+            result = await missing_client.send_message_stream("Hi", "telegram:123")
+            assert result == "Hello"
+
+    @pytest.mark.asyncio
+    async def test_streaming_empty_choices_list_skipped(self, missing_client):
+        """Empty choices list in streaming chunk is skipped."""
+        sse_lines = [
+            b'data: {"choices":[]}\n',
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        async with missing_client:
+            missing_client._session.post = MagicMock(
+                return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_response))
+            )
+
+            result = await missing_client.send_message_stream("Hi", "telegram:123")
+            assert result == "Hello"
+
+    @pytest.mark.asyncio
+    async def test_streaming_missing_delta_key_no_crash(self, missing_client):
+        """Missing delta key in streaming chunk does not crash."""
+        sse_lines = [
+            b'data: {"choices":[{}]}\n',
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        async with missing_client:
+            missing_client._session.post = MagicMock(
+                return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_response))
+            )
+
+            result = await missing_client.send_message_stream("Hi", "telegram:123")
+            assert result == "Hello"
+
+
+class TestTelegramClientUserId:
+    """Tests for TelegramClient user_id field in request body."""
+
+    @pytest.fixture
+    def user_config(self):
+        """Create test config."""
+        return TelegramConfig(token="test-token", session_socket="/tmp/test.sock")
+
+    @pytest.fixture
+    def user_client(self, user_config):
+        """Create test client."""
+        return TelegramClient(user_config)
+
+    @pytest.mark.asyncio
+    async def test_send_message_includes_user_field(self, user_client):
+        """send_message includes user field in request body."""
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(
+            return_value={"choices": [{"message": {"content": "Hello"}}]}
+        )
+
+        async with user_client:
+            user_client._session.post = MagicMock(
+                return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_response))
+            )
+
+            await user_client.send_message("Hi", "telegram:123")
+
+            # Verify post was called with json containing user field
+            call_args = user_client._session.post.call_args
+            json_body = call_args.kwargs.get("json", {})
+            assert "user" in json_body
+            assert json_body["user"] == "telegram:123"
+
+    @pytest.mark.asyncio
+    async def test_send_message_stream_includes_user_field(self, user_client):
+        """send_message_stream includes user field in request body."""
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def async_iter():
+            for line in sse_lines:
+                yield line
+
+        mock_response = MagicMock()
+        mock_response.status = 200
+        mock_response.content = async_iter()
+
+        async with user_client:
+            user_client._session.post = MagicMock(
+                return_value=AsyncMock(__aenter__=AsyncMock(return_value=mock_response))
+            )
+
+            await user_client.send_message_stream("Hi", "telegram:123")
+
+            # Verify post was called with json containing user field
+            call_args = user_client._session.post.call_args
+            json_body = call_args.kwargs.get("json", {})
+            assert "user" in json_body
+            assert json_body["user"] == "telegram:123"

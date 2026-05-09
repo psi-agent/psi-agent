@@ -340,3 +340,21 @@ class TestMountWithManifest:
 
             # Output directory should be created
             assert await output_dir.exists()
+
+
+class TestResolveTargetLayerEdgeCases:
+    """Tests for _resolve_target_layer edge cases."""
+
+    def test_valid_uuid_format_not_in_layers_tag_fallback_fails(self) -> None:
+        """Valid UUID format but not in layers, tag lookup also fails -> MountError."""
+        layer_uuid = uuid4()
+        other_uuid = uuid4()  # A valid UUID that's not in layers
+        manifest = Manifest(
+            layers={layer_uuid: Layer(tag="v1.0")},
+            default=layer_uuid,
+        )
+
+        # other_uuid is a valid UUID format but not in manifest.layers
+        # Tag lookup will also fail since it's a UUID string, not a tag
+        with pytest.raises(MountError, match="not found"):
+            _resolve_target_layer(manifest, str(other_uuid))

@@ -7,7 +7,13 @@ from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from openai import APIConnectionError, APITimeoutError, AuthenticationError, RateLimitError
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AuthenticationError,
+    RateLimitError,
+)
 
 from psi_agent.ai.openai_completions.client import OpenAICompletionsClient
 from psi_agent.ai.openai_completions.config import OpenAICompletionsConfig
@@ -349,3 +355,219 @@ class TestOpenAICompletionsClient:
                 assert "reasoning_effort" not in call_kwargs[1]
 
                 assert len(chunks) == 2
+
+
+class TestClientNotInitialized:
+    """Tests for calling client without initialization."""
+
+    @pytest.fixture
+    def client(self) -> OpenAICompletionsClient:
+        """Create test client without entering context manager."""
+        config = OpenAICompletionsConfig(
+            session_socket="/tmp/test.sock",
+            model="test-model",
+            api_key="test-key",
+            base_url="https://api.example.com/v1",
+        )
+        return OpenAICompletionsClient(config)
+
+    @pytest.mark.asyncio
+    async def test_chat_completions_raises_when_not_initialized(
+        self, client: OpenAICompletionsClient
+    ) -> None:
+        """Test chat_completions raises RuntimeError when client not initialized."""
+        with pytest.raises(RuntimeError, match="Client not initialized"):
+            await client.chat_completions(
+                {"messages": [{"role": "user", "content": "Hello"}]},
+                stream=False,
+            )
+
+    @pytest.mark.asyncio
+    async def test_chat_completions_streaming_raises_when_not_initialized(
+        self, client: OpenAICompletionsClient
+    ) -> None:
+        """Test streaming chat_completions raises RuntimeError when client not initialized."""
+        with pytest.raises(RuntimeError, match="Client not initialized"):
+            await client.chat_completions(
+                {"messages": [{"role": "user", "content": "Hello"}]},
+                stream=True,
+            )
+
+
+class TestHandleError:
+    """Tests for _handle_error method."""
+
+    @pytest.fixture
+    def client(self) -> OpenAICompletionsClient:
+        """Create test client."""
+        config = OpenAICompletionsConfig(
+            session_socket="/tmp/test.sock",
+            model="test-model",
+            api_key="test-key",
+            base_url="https://api.example.com/v1",
+        )
+        return OpenAICompletionsClient(config)
+
+    def test_api_status_error_with_status_code(self, client: OpenAICompletionsClient) -> None:
+        """Test _handle_error with APIStatusError that has status_code."""
+        error = APIStatusError(
+            message="Bad request",
+            response=MagicMock(status_code=400),
+            body=None,
+        )
+        result = client._handle_error(error)
+        assert result["error"] == "Bad request"
+        assert result["status_code"] == 400
+
+    def test_api_status_error_with_none_status_code(self, client: OpenAICompletionsClient) -> None:
+        """Test _handle_error with APIStatusError where status_code is None."""
+        error = APIStatusError(
+            message="Unknown error",
+            response=MagicMock(status_code=None),
+            body=None,
+        )
+        result = client._handle_error(error)
+        assert result["error"] == "Unknown error"
+        assert result["status_code"] == 500
+
+    def test_generic_exception(self, client: OpenAICompletionsClient) -> None:
+        """Test _handle_error with generic Exception."""
+        error = Exception("unexpected failure")
+        result = client._handle_error(error)
+        assert result["error"] == "unexpected failure"
+        assert result["status_code"] == 500
+
+
+class TestStreamingErrorPaths:
+    """Tests for streaming error handling."""
+
+    @pytest.fixture
+    def client(self) -> OpenAICompletionsClient:
+        """Create test client."""
+        config = OpenAICompletionsConfig(
+            session_socket="/tmp/test.sock",
+            model="test-model",
+            api_key="test-key",
+            base_url="https://api.example.com/v1",
+        )
+        return OpenAICompletionsClient(config)
+
+    @pytest.mark.asyncio
+    async def test_streaming_authentication_error(self, client: OpenAICompletionsClient) -> None:
+        """Test streaming with AuthenticationError."""
+        with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:
+            mock_instance = AsyncMock()
+            mock_instance.chat.completions.create = AsyncMock(
+                side_effect=AuthenticationError(
+                    message="Invalid API key",
+                    response=MagicMock(status_code=401),
+                    body=None,
+                )
+            )
+            mock_instance.close = AsyncMock()
+            mock_openai.return_value = mock_instance
+
+            async with client:
+                result = await client.chat_completions(
+                    {"messages": [{"role": "user", "content": "Hello"}]},
+                    stream=True,
+                )
+
+                chunks = []
+                async for chunk in result:
+                    chunks.append(chunk)
+
+                assert len(chunks) == 1
+                import json
+
+                error_data = json.loads(chunks[0].replace("data: ", "").strip())
+                assert "error" in error_data
+                assert error_data["status_code"] == 401
+
+    @pytest.mark.asyncio
+    async def test_streaming_rate_limit_error(self, client: OpenAICompletionsClient) -> None:
+        """Test streaming with RateLimitError."""
+        with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:
+            mock_instance = AsyncMock()
+            mock_instance.chat.completions.create = AsyncMock(
+                side_effect=RateLimitError(
+                    message="Rate limit exceeded",
+                    response=MagicMock(status_code=429),
+                    body=None,
+                )
+            )
+            mock_instance.close = AsyncMock()
+            mock_openai.return_value = mock_instance
+
+            async with client:
+                result = await client.chat_completions(
+                    {"messages": [{"role": "user", "content": "Hello"}]},
+                    stream=True,
+                )
+
+                chunks = []
+                async for chunk in result:
+                    chunks.append(chunk)
+
+                assert len(chunks) == 1
+                import json
+
+                error_data = json.loads(chunks[0].replace("data: ", "").strip())
+                assert "error" in error_data
+                assert error_data["status_code"] == 429
+
+    @pytest.mark.asyncio
+    async def test_streaming_connection_error(self, client: OpenAICompletionsClient) -> None:
+        """Test streaming with APIConnectionError."""
+        with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:
+            mock_instance = AsyncMock()
+            mock_instance.chat.completions.create = AsyncMock(
+                side_effect=APIConnectionError(request=MagicMock())
+            )
+            mock_instance.close = AsyncMock()
+            mock_openai.return_value = mock_instance
+
+            async with client:
+                result = await client.chat_completions(
+                    {"messages": [{"role": "user", "content": "Hello"}]},
+                    stream=True,
+                )
+
+                chunks = []
+                async for chunk in result:
+                    chunks.append(chunk)
+
+                assert len(chunks) == 1
+                import json
+
+                error_data = json.loads(chunks[0].replace("data: ", "").strip())
+                assert "error" in error_data
+                assert error_data["status_code"] == 500
+
+    @pytest.mark.asyncio
+    async def test_streaming_timeout_error(self, client: OpenAICompletionsClient) -> None:
+        """Test streaming with APITimeoutError."""
+        with patch("psi_agent.ai.openai_completions.client.AsyncOpenAI") as mock_openai:
+            mock_instance = AsyncMock()
+            mock_instance.chat.completions.create = AsyncMock(
+                side_effect=APITimeoutError(request=MagicMock())
+            )
+            mock_instance.close = AsyncMock()
+            mock_openai.return_value = mock_instance
+
+            async with client:
+                result = await client.chat_completions(
+                    {"messages": [{"role": "user", "content": "Hello"}]},
+                    stream=True,
+                )
+
+                chunks = []
+                async for chunk in result:
+                    chunks.append(chunk)
+
+                assert len(chunks) == 1
+                import json
+
+                error_data = json.loads(chunks[0].replace("data: ", "").strip())
+                assert "error" in error_data
+                assert error_data["status_code"] == 500
