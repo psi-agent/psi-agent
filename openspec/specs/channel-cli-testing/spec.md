@@ -1,33 +1,26 @@
-## ADDED Requirements
+## channel-cli-testing
 
-### Requirement: Channel CLI routes to correct subcommand
+CliClient 的 _send_non_streaming 和 _send_streaming HTTP 交互成功路径测试。
 
-The channel CLI SHALL route commands to the correct channel implementation.
+### CliClient._send_non_streaming
 
-#### Scenario: Invoke REPL channel
-- **WHEN** user runs `psi-agent channel repl --session-socket ./socket`
-- **THEN** REPL channel SHALL be started with the provided socket path
+- mock aiohttp 返回 200 响应，验证返回 content 字符串
+- mock aiohttp 返回非 200 状态码，验证返回错误字符串
+- mock aiohttp 返回空 choices，验证返回 "Error: No response from session"
+- mock aiohttp 抛出 ClientConnectorError，验证返回连接错误字符串
+- mock aiohttp 抛出 TimeoutError，验证返回超时错误字符串
 
-#### Scenario: Invoke Telegram channel
-- **WHEN** user runs `psi-agent channel telegram --token xxx --session-socket ./socket`
-- **THEN** Telegram channel SHALL be started with the provided credentials
+### CliClient._send_streaming
 
-### Requirement: Channel CLI validates required arguments
+- mock SSE 响应，验证正确解析 content chunks 并返回完整内容
+- mock SSE 响应含 reasoning 字段，验证 reasoning 被记录但不返回
+- mock SSE 响应含 [DONE] 标记，验证正确终止
+- mock SSE 响应含无效 JSON 行，验证跳过不崩溃
+- mock aiohttp 返回非 200 状态码，验证返回错误字符串
+- on_chunk 回调在 content 非空时被调用
 
-The channel CLI SHALL validate required arguments for each channel type.
+### CliClient.send_message
 
-#### Scenario: Missing session socket
-- **WHEN** channel is started without `--session-socket` argument
-- **THEN** CLI SHALL display an error message indicating the missing argument
-
-#### Scenario: Missing Telegram token
-- **WHEN** Telegram channel is started without `--token` argument
-- **THEN** CLI SHALL display an error message indicating the missing token
-
-### Requirement: Channel CLI handles help flag
-
-The channel CLI SHALL display help information when `--help` flag is provided.
-
-#### Scenario: Display channel help
-- **WHEN** user runs `psi-agent channel --help`
-- **THEN** CLI SHALL display available channel types and their options
+- config.stream=True 时分发到 _send_streaming
+- config.stream=False 时分发到 _send_non_streaming
+- 未初始化 session 时抛出 RuntimeError
