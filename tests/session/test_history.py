@@ -192,3 +192,121 @@ async def test_save_history_write_error():
         with patch.object(anyio.Path, "write_text", side_effect=OSError("Write failed")):
             # Should not raise error, just log it
             await save_history_to_file(history, history_file)
+
+
+class TestLoadHistoryEdgeCases:
+    """Edge case tests for load_history_from_file."""
+
+    @pytest.mark.asyncio
+    async def test_non_json_array_content_json_object(self) -> None:
+        """Non-JSON-array content (JSON object)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            history_file = anyio.Path(tmpdir) / "history.json"
+            await history_file.write_text('{"key": "value"}')
+            messages = await load_history_from_file(history_file)
+            # Returns the dict as-is (not a list), but json.loads succeeds
+            assert isinstance(messages, dict)
+
+    @pytest.mark.asyncio
+    async def test_json_string_content(self) -> None:
+        """JSON string content."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            history_file = anyio.Path(tmpdir) / "history.json"
+            await history_file.write_text('"just a string"')
+            messages = await load_history_from_file(history_file)
+            assert messages == "just a string"
+
+    @pytest.mark.asyncio
+    async def test_json_number_content(self) -> None:
+        """JSON number content — not a list, so returns empty."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            history_file = anyio.Path(tmpdir) / "history.json"
+            await history_file.write_text("42")
+            messages = await load_history_from_file(history_file)
+            # len() fails on int, so exception handler returns []
+            assert messages == []
+
+    @pytest.mark.asyncio
+    async def test_null_content(self) -> None:
+        """'null' JSON content — not a list, so returns empty."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            history_file = anyio.Path(tmpdir) / "history.json"
+            await history_file.write_text("null")
+            messages = await load_history_from_file(history_file)
+            # len() fails on None, so exception handler returns []
+            assert messages == []
+
+    @pytest.mark.asyncio
+    async def test_empty_string_file(self) -> None:
+        """Empty string file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            history_file = anyio.Path(tmpdir) / "history.json"
+            await history_file.write_text("")
+            messages = await load_history_from_file(history_file)
+            assert messages == []
+
+
+class TestSaveHistoryEdgeCases:
+    """Edge case tests for save_history_to_file."""
+
+    @pytest.mark.asyncio
+    async def test_non_ascii_characters(self) -> None:
+        """Messages with non-ASCII characters (ensure_ascii=False preserves)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            history_file = anyio.Path(tmpdir) / "history.json"
+            history = History(
+                messages=[{"role": "user", "content": "你好世界 🌍"}],
+                history_file=str(history_file),
+            )
+
+            await save_history_to_file(history, history_file)
+            content = await history_file.read_text()
+            assert "你好世界" in content
+            assert "🌍" in content
+
+    @pytest.mark.asyncio
+    async def test_special_json_characters(self) -> None:
+        """Messages with special JSON characters."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            history_file = anyio.Path(tmpdir) / "history.json"
+            history = History(
+                messages=[{"role": "user", "content": 'He said "hello" and \\backslash'}],
+                history_file=str(history_file),
+            )
+
+            await save_history_to_file(history, history_file)
+            content = await history_file.read_text()
+            assert "hello" in content
+
+    @pytest.mark.asyncio
+    async def test_empty_message_list(self) -> None:
+        """Empty message list saves as '[]'."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            history_file = anyio.Path(tmpdir) / "history.json"
+            history = History(messages=[], history_file=str(history_file))
+
+            await save_history_to_file(history, history_file)
+            content = await history_file.read_text()
+            assert content.strip() == "[]"
+
+
+class TestHistoryRoundTrip:
+    """Round-trip consistency tests."""
+
+    @pytest.mark.asyncio
+    async def test_save_then_load_identical(self) -> None:
+        """Save then load produces identical messages."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            history_file = anyio.Path(tmpdir) / "history.json"
+            original_messages = [
+                {"role": "user", "content": "Hello"},
+                {"role": "assistant", "content": "Hi there!"},
+                {"role": "user", "content": "How are you?"},
+                {"role": "assistant", "content": "I'm fine, thanks!"},
+            ]
+            history = History(messages=original_messages, history_file=str(history_file))
+
+            await save_history_to_file(history, history_file)
+            loaded_messages = await load_history_from_file(history_file)
+
+            assert loaded_messages == original_messages

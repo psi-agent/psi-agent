@@ -341,3 +341,226 @@ class TestWorkspaceWatcher:
         changes = await watcher.check_for_changes()
 
         assert not changes.has_changes
+
+
+class TestWorkspaceWatcherCompositeChanges:
+    """Composite change tests for WorkspaceWatcher."""
+
+    @pytest.mark.asyncio
+    async def test_initialize_with_empty_workspace(self, tmp_path) -> None:
+        """Initialize with empty workspace (no tools/skills/schedules dirs)."""
+        workspace = anyio.Path(tmp_path)
+        watcher = WorkspaceWatcher(workspace)
+        await watcher.initialize()
+
+        assert watcher.get_tool_hashes() == {}
+        assert watcher.get_skill_hashes() == {}
+        assert watcher.get_schedule_hashes() == {}
+
+    @pytest.mark.asyncio
+    async def test_simultaneous_add_modify_remove(self, tmp_path) -> None:
+        """Simultaneous add+modify+remove across tools/skills/schedules."""
+        workspace = anyio.Path(tmp_path)
+
+        # Set up initial state
+        tools_dir = workspace / "tools"
+        await tools_dir.mkdir()
+        await (tools_dir / "keep.py").write_text("v1")
+        await (tools_dir / "modify.py").write_text("v1")
+
+        skills_dir = workspace / "skills"
+        await skills_dir.mkdir()
+        skill_dir = skills_dir / "keep_skill"
+        await skill_dir.mkdir()
+        await (skill_dir / "SKILL.md").write_text("v1")
+
+        schedules_dir = workspace / "schedules"
+        await schedules_dir.mkdir()
+        task_dir = schedules_dir / "keep_task"
+        await task_dir.mkdir()
+        await (task_dir / "TASK.md").write_text("v1")
+
+        watcher = WorkspaceWatcher(workspace)
+        await watcher.initialize()
+
+        # Add new tool, modify existing tool, remove another
+        await (tools_dir / "new.py").write_text("v1")
+        await (tools_dir / "modify.py").write_text("v2")
+        await (tools_dir / "keep.py").unlink()
+
+        # Add new skill, modify existing
+        new_skill_dir = skills_dir / "new_skill"
+        await new_skill_dir.mkdir()
+        await (new_skill_dir / "SKILL.md").write_text("new")
+        await (skill_dir / "SKILL.md").write_text("v2")
+
+        # Add new schedule, remove existing
+        new_task_dir = schedules_dir / "new_task"
+        await new_task_dir.mkdir()
+        await (new_task_dir / "TASK.md").write_text("new")
+        await (task_dir / "TASK.md").unlink()
+        await task_dir.rmdir()
+
+        changes = await watcher.check_for_changes()
+
+        assert "new" in changes.tools_added
+        assert "keep" in changes.tools_removed
+        assert "modify" in changes.tools_modified
+
+        assert "new_skill" in changes.skills_added
+        assert "keep_skill" in changes.skills_modified
+
+        assert "new_task" in changes.schedules_added
+        assert "keep_task" in changes.schedules_removed
+
+    @pytest.mark.asyncio
+    async def test_add_then_remove_same_tool_between_checks(self, tmp_path) -> None:
+        """Add then immediately remove same tool between checks."""
+        workspace = anyio.Path(tmp_path)
+        tools_dir = workspace / "tools"
+        await tools_dir.mkdir()
+
+        watcher = WorkspaceWatcher(workspace)
+        await watcher.initialize()
+
+        # Add and remove before check
+        tool_file = tools_dir / "ephemeral.py"
+        await tool_file.write_text("v1")
+        await tool_file.unlink()
+
+        changes = await watcher.check_for_changes()
+        assert not changes.has_changes
+
+    @pytest.mark.asyncio
+    async def test_modify_then_modify_again(self, tmp_path) -> None:
+        """Modify then modify again (hash updates twice)."""
+        workspace = anyio.Path(tmp_path)
+        tools_dir = workspace / "tools"
+        await tools_dir.mkdir()
+        await (tools_dir / "tool.py").write_text("v1")
+
+        watcher = WorkspaceWatcher(workspace)
+        await watcher.initialize()
+
+        # First modification
+        await (tools_dir / "tool.py").write_text("v2")
+        changes1 = await watcher.check_for_changes()
+        assert "tool" in changes1.tools_modified
+
+        # Second modification
+        await (tools_dir / "tool.py").write_text("v3")
+        changes2 = await watcher.check_for_changes()
+        assert "tool" in changes2.tools_modified
+
+
+class TestWorkspaceWatcherIdempotency:
+    """Idempotency tests for WorkspaceWatcher."""
+
+    @pytest.mark.asyncio
+    async def test_consecutive_checks_no_changes(self, tmp_path) -> None:
+        """Consecutive check_for_changes with no changes returns empty summary."""
+        workspace = anyio.Path(tmp_path)
+        tools_dir = workspace / "tools"
+        await tools_dir.mkdir()
+        await (tools_dir / "tool.py").write_text("v1")
+
+        watcher = WorkspaceWatcher(workspace)
+        await watcher.initialize()
+
+        changes1 = await watcher.check_for_changes()
+        changes2 = await watcher.check_for_changes()
+
+        assert not changes1.has_changes
+        assert not changes2.has_changes
+
+    @pytest.mark.asyncio
+    async def test_check_updates_hashes_so_no_rereport(self, tmp_path) -> None:
+        """check_for_changes updates internal hashes so subsequent check does not re-report."""
+        workspace = anyio.Path(tmp_path)
+        tools_dir = workspace / "tools"
+        await tools_dir.mkdir()
+        await (tools_dir / "tool.py").write_text("v1")
+
+        watcher = WorkspaceWatcher(workspace)
+        await watcher.initialize()
+
+        # Modify tool
+        await (tools_dir / "tool.py").write_text("v2")
+        changes1 = await watcher.check_for_changes()
+        assert "tool" in changes1.tools_modified
+
+        # Check again without further changes
+        changes2 = await watcher.check_for_changes()
+        assert not changes2.has_changes
+
+
+class TestScanDirectoryEdgeCases:
+    """Edge case tests for scan directories."""
+
+    @pytest.mark.asyncio
+    async def test_tools_dir_with_subdirectories(self, tmp_path) -> None:
+        """Tools dir with subdirectories (should be ignored)."""
+        tools_dir = anyio.Path(tmp_path) / "tools"
+        await tools_dir.mkdir()
+        await (tools_dir / "read.py").write_text("async def tool(): pass")
+        sub_dir = tools_dir / "subdir"
+        await sub_dir.mkdir()
+
+        result = await scan_tools_directory(tools_dir)
+        assert len(result) == 1
+        assert "read" in result
+
+    @pytest.mark.asyncio
+    async def test_pycache_and_pyc_files_ignored(self, tmp_path) -> None:
+        """__pycache__ and .pyc files are not .py so they're ignored."""
+        tools_dir = anyio.Path(tmp_path) / "tools"
+        await tools_dir.mkdir()
+        await (tools_dir / "read.py").write_text("async def tool(): pass")
+        pycache = tools_dir / "__pycache__"
+        await pycache.mkdir()
+        await (pycache / "read.cpython-314.pyc").write_text("bytecode")
+
+        result = await scan_tools_directory(tools_dir)
+        assert len(result) == 1
+        assert "read" in result
+
+    @pytest.mark.asyncio
+    async def test_init_py_as_tool(self, tmp_path) -> None:
+        """__init__.py is a .py file so it would be scanned."""
+        tools_dir = anyio.Path(tmp_path) / "tools"
+        await tools_dir.mkdir()
+        await (tools_dir / "__init__.py").write_text("")
+        await (tools_dir / "read.py").write_text("async def tool(): pass")
+
+        result = await scan_tools_directory(tools_dir)
+        # __init__.py is a .py file, so it will be included
+        assert "__init__" in result
+        assert "read" in result
+
+    @pytest.mark.asyncio
+    async def test_skills_dir_with_special_characters(self, tmp_path) -> None:
+        """Skills dir with special characters in name."""
+        skills_dir = anyio.Path(tmp_path) / "skills"
+        await skills_dir.mkdir()
+        skill_dir = skills_dir / "my-skill_v2"
+        await skill_dir.mkdir()
+        await (skill_dir / "SKILL.md").write_text("---\nname: my-skill_v2\n---\nContent")
+
+        result = await scan_skills_directory(skills_dir)
+        assert "my-skill_v2" in result
+
+    @pytest.mark.asyncio
+    async def test_schedules_dir_with_non_directory_entries(self, tmp_path) -> None:
+        """Schedules dir with non-directory entries (files should be ignored)."""
+        schedules_dir = anyio.Path(tmp_path) / "schedules"
+        await schedules_dir.mkdir()
+        # Regular file in schedules dir (not a directory)
+        await (schedules_dir / "README.md").write_text("Not a schedule")
+        # Actual schedule
+        task_dir = schedules_dir / "task1"
+        await task_dir.mkdir()
+        await (task_dir / "TASK.md").write_text("---\ncron: '0 9 * * *'\n---\nContent")
+
+        result = await scan_schedules_directory(schedules_dir)
+        assert len(result) == 1
+        assert "task1" in result

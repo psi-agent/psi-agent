@@ -328,38 +328,177 @@ class TestDetectAndUpdateTools:
             assert original_hash != new_hash
 
 
-class TestParseGoogleDocstring:
-    """Additional tests for parse_google_docstring."""
+class TestParseGoogleDocstringCornerCases:
+    """Corner case tests for parse_google_docstring."""
 
-    def test_multiline_param_description(self) -> None:
-        """Test parsing multiline parameter descriptions."""
+    def test_only_returns_section(self) -> None:
+        """Docstring with only Returns section (no Args)."""
+        docstring = """Do something useful.
+
+        Returns:
+            A string result.
+        """
+        description, params = parse_google_docstring(docstring)
+        assert "Do something useful" in description
+        assert params == {}
+
+    def test_only_args_section(self) -> None:
+        """Docstring with only Args section (no Returns)."""
         docstring = """Do something.
 
         Args:
-            param1: First line of description.
-                Second line of description.
-                Third line.
-
-        Returns:
-            Result.
+            x: The x parameter.
+            y: The y parameter.
         """
         description, params = parse_google_docstring(docstring)
-        assert "First line" in params["param1"]
-        assert "Second line" in params["param1"]
-        assert "Third line" in params["param1"]
+        assert "Do something" in description
+        assert params["x"] == "The x parameter."
+        assert params["y"] == "The y parameter."
 
-    def test_no_args_section(self) -> None:
-        """Test parsing docstring without Args section.
+    def test_nested_colons_in_param_descriptions(self) -> None:
+        """Parameter descriptions containing colons."""
+        docstring = """Do something.
 
-        Note: The function only extracts Args section, so Returns and other
-        sections are included in the description.
-        """
-        docstring = """Just a description.
-
-        Returns:
-            Something.
+        Args:
+            url: The URL to connect to, e.g. http://example.com:8080.
+            format: Output format: json or xml.
         """
         description, params = parse_google_docstring(docstring)
-        # The description includes everything since there's no Args: marker
-        assert "Just a description" in description
+        assert "http://example.com:8080" in params["url"]
+        assert "json or xml" in params["format"]
+
+    def test_single_line_docstring(self) -> None:
+        """Single-line docstring without Args or Returns."""
+        docstring = "Just a simple description."
+        description, params = parse_google_docstring(docstring)
+        assert description == "Just a simple description."
         assert params == {}
+
+    def test_unicode_content(self) -> None:
+        """Docstring with Unicode characters."""
+        docstring = """读取文件内容。
+
+        Args:
+            文件路径: 文件的路径。
+        """
+        description, params = parse_google_docstring(docstring)
+        assert "读取文件内容" in description
+        assert "文件的路径" in params["文件路径"]
+
+    def test_args_with_no_space_after_colon(self) -> None:
+        """Args where description starts immediately after colon."""
+        docstring = """Do something.
+
+        Args:
+            x:First param description.
+            y:Second param description.
+        """
+        description, params = parse_google_docstring(docstring)
+        assert "First param" in params["x"]
+        assert "Second param" in params["y"]
+
+
+class TestPythonTypeToOpenaiTypeExtended:
+    """Extended tests for python_type_to_openai_type."""
+
+    def test_uppercase_list(self) -> None:
+        """Test uppercase List type."""
+
+        assert python_type_to_openai_type(list) == "array"
+
+    def test_uppercase_dict(self) -> None:
+        """Test uppercase Dict type."""
+
+        assert python_type_to_openai_type(dict) == "object"
+
+    def test_unknown_type_defaults_to_string(self) -> None:
+        """Test that unknown types default to 'string'."""
+
+        class CustomType:
+            pass
+
+        assert python_type_to_openai_type(CustomType) == "string"
+
+    def test_all_standard_mappings(self) -> None:
+        """Verify all standard type mappings."""
+        mappings = {
+            str: "string",
+            int: "integer",
+            float: "number",
+            bool: "boolean",
+            list: "array",
+            dict: "object",
+        }
+        for python_type, expected in mappings.items():
+            assert python_type_to_openai_type(python_type) == expected
+
+
+class TestGenerateToolSchemaBoundary:
+    """Boundary tests for generate_tool_schema."""
+
+    def test_function_with_no_parameters(self) -> None:
+        """Function with no parameters at all."""
+
+        async def no_params() -> str:
+            """No params tool."""
+            return "ok"
+
+        schema = generate_tool_schema("no_params", no_params, "No params tool.", {})
+        assert schema["function"]["parameters"]["properties"] == {}
+        assert schema["function"]["parameters"]["required"] == []
+
+    def test_function_with_all_defaults(self) -> None:
+        """Function where all parameters have defaults."""
+
+        async def all_defaults(x: int = 1, y: str = "a") -> str:
+            """All defaults tool."""
+            return "ok"
+
+        schema = generate_tool_schema("all_defaults", all_defaults, "All defaults.", {})
+        assert "x" in schema["function"]["parameters"]["properties"]
+        assert "y" in schema["function"]["parameters"]["properties"]
+        assert schema["function"]["parameters"]["required"] == []
+
+    def test_mixed_required_optional(self) -> None:
+        """Function with mixed required and optional parameters."""
+
+        async def mixed(required_param: str, optional_param: int = 5) -> str:
+            """Mixed params tool."""
+            return "ok"
+
+        schema = generate_tool_schema("mixed", mixed, "Mixed.", {})
+        assert "required_param" in schema["function"]["parameters"]["required"]
+        assert "optional_param" not in schema["function"]["parameters"]["required"]
+
+
+class TestLoadToolFromFileExceptionPaths:
+    """Exception path tests for load_tool_from_file."""
+
+    @pytest.mark.asyncio
+    async def test_empty_file(self) -> None:
+        """Test loading an empty file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tool_file = anyio.Path(tmpdir) / "empty.py"
+            await tool_file.write_text("")
+            result = await load_tool_from_file(tool_file)
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_file_with_only_comments(self) -> None:
+        """Test loading a file with only comments."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tool_file = anyio.Path(tmpdir) / "comments.py"
+            await tool_file.write_text("# This is a comment\n# Another comment\n")
+            result = await load_tool_from_file(tool_file)
+            assert result is None
+
+    @pytest.mark.asyncio
+    async def test_tool_missing_type_annotations(self) -> None:
+        """Test loading a tool function without type annotations."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tool_file = anyio.Path(tmpdir) / "no_types.py"
+            await tool_file.write_text("async def tool(x, y): return str(x + y)")
+            result = await load_tool_from_file(tool_file)
+            assert result is not None
+            # Parameters without annotations should be skipped
+            assert result.schema["function"]["parameters"]["properties"] == {}
