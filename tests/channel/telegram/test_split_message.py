@@ -78,7 +78,52 @@ class TestSplitMessage:
         assert len(result[1]) == 50
 
     def test_empty_message(self):
-        """Test empty message returns empty list."""
+        """Test empty message returns list with empty string."""
         result = split_message("")
 
         assert result == [""]
+
+
+class TestSplitMessageBoundary:
+    """Boundary tests for split_message."""
+
+    def test_max_length_plus_one(self):
+        """Message of max_length+1 is split into 2."""
+        text = "a" * 4097
+        result = split_message(text)
+        assert len(result) == 2
+        assert len(result[0]) == 4096
+        assert len(result[1]) == 1
+        assert "".join(result) == text
+
+    def test_max_length_1(self):
+        """max_length=1 splits every character."""
+        text = "abc"
+        result = split_message(text, max_length=1)
+        assert result == ["a", "b", "c"]
+
+    def test_only_spaces(self):
+        """Message with only spaces."""
+        text = " " * 100
+        result = split_message(text, max_length=50)
+        assert "".join(result) == text
+
+    def test_consecutive_newlines(self):
+        """Message with consecutive newlines."""
+        text = "hello\n\n\nworld"
+        result = split_message(text)
+        assert "".join(result) == text
+
+    def test_unicode_at_boundary(self):
+        """Unicode characters at the boundary."""
+        text = "你" * 2000  # Each CJK char is 1 Python char
+        result = split_message(text, max_length=1000)
+        assert "".join(result) == text
+        assert all(len(chunk) <= 1000 for chunk in result)
+
+    def test_markdown_formatting(self):
+        """Message with markdown formatting preserved."""
+        text = "**bold** and _italic_ and `code`"
+        result = split_message(text)
+        assert result == [text]
+        assert "**bold**" in result[0]

@@ -263,3 +263,79 @@ class TestSerializeManifest:
         parsed = parse_manifest(json_str)
         assert parsed.layers == original.layers
         assert parsed.default == original.default
+
+
+class TestManifestGraphCornerCases:
+    """Corner case tests for Manifest graph operations."""
+
+    def test_multi_layer_chain_resolution(self) -> None:
+        """Multi-layer chain resolution."""
+        uuid1 = uuid4()
+        uuid2 = uuid4()
+        uuid3 = uuid4()
+        manifest = Manifest(
+            layers={
+                uuid1: Layer(tag="v1"),
+                uuid2: Layer(parent=uuid1, tag="v2"),
+                uuid3: Layer(parent=uuid2, tag="v3"),
+            },
+            default=uuid3,
+        )
+        chain = manifest.resolve_chain(uuid3)
+        assert chain == [uuid1, uuid2, uuid3]
+
+    def test_get_all_tags_on_empty_manifest(self) -> None:
+        """Get all tags on empty manifest."""
+        manifest = Manifest()
+        assert manifest.get_all_tags() == {}
+
+    def test_default_layer_not_in_layers(self) -> None:
+        """Default layer UUID not in layers dict is allowed by dataclass."""
+        uuid1 = uuid4()
+        uuid_other = uuid4()
+        manifest = Manifest(layers={uuid1: Layer(tag="v1")}, default=uuid_other)
+        assert manifest.default not in manifest.layers
+
+
+class TestParseManifestMalformed:
+    """Malformed input tests for parse_manifest."""
+
+    def test_empty_json_object(self) -> None:
+        """Empty JSON object raises ManifestParseError."""
+        with pytest.raises(ManifestParseError, match="must have 'layers'"):
+            parse_manifest("{}")
+
+    def test_json_array_not_object(self) -> None:
+        """JSON array (not object) raises ManifestParseError."""
+        with pytest.raises(ManifestParseError, match="must be a JSON object"):
+            parse_manifest("[]")
+
+    def test_layers_not_dict(self) -> None:
+        """layers field is not a dict raises ManifestParseError."""
+        with pytest.raises(ManifestParseError, match="'layers' must be an object"):
+            parse_manifest(
+                '{"layers": "not a dict", "default": "00000000-0000-0000-0000-000000000001"}'
+            )
+
+
+class TestSerializeManifestRoundTripExtended:
+    """Extended round-trip tests for serialize_manifest."""
+
+    def test_parse_serialize_parse_consistency(self) -> None:
+        """parse → serialize → parse produces identical manifest."""
+        uuid1 = uuid4()
+        uuid2 = uuid4()
+        uuid3 = uuid4()
+        original = Manifest(
+            layers={
+                uuid1: Layer(tag="base"),
+                uuid2: Layer(parent=uuid1, tag="mid"),
+                uuid3: Layer(parent=uuid2, tag="top"),
+            },
+            default=uuid3,
+        )
+        serialized = serialize_manifest(original)
+        reparsed = parse_manifest(serialized)
+
+        assert reparsed.layers == original.layers
+        assert reparsed.default == original.default

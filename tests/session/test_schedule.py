@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import anyio
+import pytest
 
 from psi_agent.session.schedule import (
     Schedule,
@@ -443,3 +444,156 @@ class TestScheduleExecutor:
 
         # Should not raise, error is logged
         mock_runner.process_request.assert_called_once()
+
+
+class TestScheduleExecutorExecuteTaskSuccess:
+    """Tests for ScheduleExecutor._execute_task normal success path."""
+
+    @pytest.mark.asyncio
+    async def test_execute_task_success(self) -> None:
+        mock_runner = MagicMock()
+        mock_runner.process_request = AsyncMock()
+
+        schedule = Schedule(
+            name="test_task",
+            cron="0 9 * * *",
+            content="Do something",
+            task_dir=anyio.Path("/tmp/test"),
+        )
+        executor = ScheduleExecutor([schedule], mock_runner)
+
+        await executor._execute_task(schedule)
+
+        mock_runner.process_request.assert_called_once_with(
+            {"role": "user", "content": "Do something"}
+        )
+
+
+class TestScheduleExecutorScheduleLoop:
+    """Tests for ScheduleExecutor._schedule_loop basic behavior."""
+
+    @pytest.mark.asyncio
+    async def test_schedule_loop_executes_once_then_stops(self) -> None:
+        mock_runner = MagicMock()
+        mock_runner.process_request = AsyncMock()
+
+        schedule = Schedule(
+            name="test_task",
+            cron="* * * * *",
+            content="Do something",
+            task_dir=anyio.Path("/tmp/test"),
+        )
+        executor = ScheduleExecutor([schedule], mock_runner)
+        executor._running = True
+
+        call_count = 0
+
+        async def stop_after_one(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            executor._running = False
+
+        mock_runner.process_request = AsyncMock(side_effect=stop_after_one)
+
+        with patch("psi_agent.session.schedule.asyncio.sleep", new_callable=AsyncMock):
+            await executor._schedule_loop(schedule)
+
+        assert call_count == 1
+
+
+class TestParseFrontmatterCornerCases:
+    """Corner case tests for parse_frontmatter."""
+
+    def test_empty_frontmatter(self) -> None:
+        # Empty frontmatter (no content between --- markers) doesn't match
+        # the regex pattern, so the entire string is returned as body
+        content = "---\n---\nSome content"
+        meta, body = parse_frontmatter(content)
+        assert meta == {}
+        assert body == content
+
+    def test_missing_closing_delimiter(self) -> None:
+        content = "---\ncron: '0 9 * * *'\nSome content without closing"
+        meta, body = parse_frontmatter(content)
+        # Without closing ---, treated as no frontmatter
+        assert meta == {}
+
+    def test_yaml_value_containing_colons(self) -> None:
+        content = "---\nname: task:with:colons\ncron: '0 9 * * *'\n---\nBody"
+        meta, body = parse_frontmatter(content)
+        assert meta.get("name") == "task:with:colons"
+        assert meta.get("cron") == "0 9 * * *"
+
+    def test_unknown_fields_ignored(self) -> None:
+        content = "---\nname: test\ncron: '0 9 * * *'\nunknown_field: value\n---\nBody"
+        meta, body = parse_frontmatter(content)
+        assert meta.get("name") == "test"
+        assert meta.get("cron") == "0 9 * * *"
+        assert meta.get("unknown_field") == "value"
+
+    def test_empty_file(self) -> None:
+        meta, body = parse_frontmatter("")
+        assert meta == {}
+
+    def test_content_without_frontmatter(self) -> None:
+        content = "Just plain content\nNo frontmatter here"
+        meta, body = parse_frontmatter(content)
+        assert meta == {}
+
+    def test_missing_cron_field(self) -> None:
+        content = "---\nname: test\n---\nBody"
+        meta, body = parse_frontmatter(content)
+        assert meta.get("name") == "test"
+        assert "cron" not in meta
+
+    def test_empty_cron_string(self) -> None:
+        content = "---\nname: test\ncron: ''\n---\nBody"
+        meta, body = parse_frontmatter(content)
+        assert meta.get("cron") == ""
+
+
+class TestScheduleCornerCases:
+    """Corner case tests for Schedule."""
+
+    def test_get_next_run_increasing_times(self) -> None:
+        schedule = Schedule(
+            name="test", cron="0 9 * * *", content="test", task_dir=anyio.Path("/tmp/test")
+        )
+        t1 = schedule.get_next_run()
+        t2 = schedule.get_next_run()
+        assert t2 > t1
+
+
+class TestScheduleExecutorLifecycle:
+    """Lifecycle tests for ScheduleExecutor."""
+
+    @pytest.mark.asyncio
+    async def test_update_nonexistent_schedule(self) -> None:
+        mock_runner = MagicMock()
+        mock_runner.process_request = AsyncMock()
+        executor = ScheduleExecutor([], mock_runner)
+
+        schedule = Schedule(
+            name="new_task", cron="0 9 * * *", content="test", task_dir=anyio.Path("/tmp/test")
+        )
+        await executor.update_schedule(schedule)
+        assert any(s.name == "new_task" for s in executor.schedules)
+
+    @pytest.mark.asyncio
+    async def test_add_remove_add_lifecycle(self) -> None:
+        mock_runner = MagicMock()
+        mock_runner.process_request = AsyncMock()
+        executor = ScheduleExecutor([], mock_runner)
+
+        schedule = Schedule(
+            name="task1", cron="0 9 * * *", content="test", task_dir=anyio.Path("/tmp/test")
+        )
+
+        await executor.add_schedule(schedule)
+        assert any(s.name == "task1" for s in executor.schedules)
+
+        await executor.remove_schedule("task1")
+        assert not any(s.name == "task1" for s in executor.schedules)
+
+        await executor.add_schedule(schedule)
+        assert any(s.name == "task1" for s in executor.schedules)

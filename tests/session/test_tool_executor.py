@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 
 from psi_agent.session.tool_executor import execute_tool, execute_tools_parallel
@@ -199,3 +201,191 @@ async def test_execute_tools_parallel_mixed_success_failure():
     assert len(results) == 2
     assert results[0]["content"] == "success"
     assert "Error" in results[1]["content"]
+
+
+class TestExecuteToolExceptions:
+    """Exception tests for execute_tool."""
+
+    @pytest.mark.asyncio
+    async def test_tool_raising_type_error(self) -> None:
+        """Tool raising TypeError (argument mismatch)."""
+        registry = ToolRegistry()
+        schema = ToolSchema(
+            name="bad_tool",
+            schema={
+                "type": "function",
+                "function": {
+                    "name": "bad_tool",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+            func=AsyncMock(side_effect=TypeError("missing required argument")),
+            file_hash="hash",
+        )
+        registry.register(schema)
+
+        result = await execute_tool(registry, "bad_tool", {})
+        assert "error" in result.lower() or "type" in result.lower() or "argument" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_tool_returning_none(self) -> None:
+        """Tool returning None."""
+        registry = ToolRegistry()
+        schema = ToolSchema(
+            name="none_tool",
+            schema={
+                "type": "function",
+                "function": {
+                    "name": "none_tool",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+            func=AsyncMock(return_value=None),
+            file_hash="hash",
+        )
+        registry.register(schema)
+
+        result = await execute_tool(registry, "none_tool", {})
+        assert result is None or result == "" or result == "None" or result == "null"
+
+    @pytest.mark.asyncio
+    async def test_tool_returning_empty_string(self) -> None:
+        """Tool returning empty string."""
+        registry = ToolRegistry()
+        schema = ToolSchema(
+            name="empty_tool",
+            schema={
+                "type": "function",
+                "function": {
+                    "name": "empty_tool",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+            func=AsyncMock(return_value=""),
+            file_hash="hash",
+        )
+        registry.register(schema)
+
+        result = await execute_tool(registry, "empty_tool", {})
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_tool_returning_dict(self) -> None:
+        """Tool returning a dict (non-string type)."""
+        registry = ToolRegistry()
+        schema = ToolSchema(
+            name="dict_tool",
+            schema={
+                "type": "function",
+                "function": {
+                    "name": "dict_tool",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+            func=AsyncMock(return_value={"key": "value"}),
+            file_hash="hash",
+        )
+        registry.register(schema)
+
+        result = await execute_tool(registry, "dict_tool", {})
+        assert isinstance(result, str)
+        assert "key" in result
+
+    @pytest.mark.asyncio
+    async def test_tool_returning_list(self) -> None:
+        """Tool returning a list (non-string type)."""
+        registry = ToolRegistry()
+        schema = ToolSchema(
+            name="list_tool",
+            schema={
+                "type": "function",
+                "function": {
+                    "name": "list_tool",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+            func=AsyncMock(return_value=[1, 2, 3]),
+            file_hash="hash",
+        )
+        registry.register(schema)
+
+        result = await execute_tool(registry, "list_tool", {})
+        assert isinstance(result, str)
+
+
+class TestExecuteToolsParallelBoundary:
+    """Boundary tests for execute_tools_parallel."""
+
+    @pytest.mark.asyncio
+    async def test_empty_tool_calls_list(self) -> None:
+        """Empty tool_calls list returns empty results."""
+        registry = ToolRegistry()
+        result = await execute_tools_parallel(registry, [])
+        assert result == []
+
+    @pytest.mark.asyncio
+    async def test_tool_call_missing_function_field(self) -> None:
+        """Tool call with missing function field."""
+        registry = ToolRegistry()
+        tool_calls = [{"id": "call_1", "type": "function"}]
+        result = await execute_tools_parallel(registry, tool_calls)
+        assert len(result) == 1
+        assert "error" in result[0].get("content", "").lower() or result[0].get("content", "") == ""
+
+    @pytest.mark.asyncio
+    async def test_tool_call_missing_id_field(self) -> None:
+        """Tool call with missing id field."""
+        registry = ToolRegistry()
+        schema = ToolSchema(
+            name="test_tool",
+            schema={
+                "type": "function",
+                "function": {
+                    "name": "test_tool",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+            func=AsyncMock(return_value="ok"),
+            file_hash="hash",
+        )
+        registry.register(schema)
+
+        tool_calls = [{"type": "function", "function": {"name": "test_tool", "arguments": "{}"}}]
+        result = await execute_tools_parallel(registry, tool_calls)
+        assert len(result) == 1
+        assert result[0] is not None
+
+    @pytest.mark.asyncio
+    async def test_all_tool_calls_failing(self) -> None:
+        """All tool calls failing."""
+        registry = ToolRegistry()
+        schema = ToolSchema(
+            name="fail_tool",
+            schema={
+                "type": "function",
+                "function": {
+                    "name": "fail_tool",
+                    "parameters": {"type": "object", "properties": {}},
+                },
+            },
+            func=AsyncMock(side_effect=RuntimeError("Tool failed")),
+            file_hash="hash",
+        )
+        registry.register(schema)
+
+        tool_calls = [
+            {
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "fail_tool", "arguments": "{}"},
+            },
+            {
+                "id": "call_2",
+                "type": "function",
+                "function": {"name": "fail_tool", "arguments": "{}"},
+            },
+        ]
+        result = await execute_tools_parallel(registry, tool_calls)
+        assert len(result) == 2
+        for r in result:
+            assert "error" in r.get("content", "").lower() or "fail" in r.get("content", "").lower()

@@ -12,6 +12,7 @@ import pytest
 from psi_agent.session.config import SessionConfig
 from psi_agent.session.runner import (
     SessionRunner,
+    _load_system,
     format_thinking_block,
     format_tool_call_thinking,
     load_system_prompt,
@@ -437,6 +438,255 @@ class TestRunnerCompleteFn:
                 result = await runner._complete_fn([{"role": "user", "content": "Summarize"}])
 
                 assert result == ""
+
+
+class TestLoadSystem:
+    """Tests for _load_system function."""
+
+    @pytest.mark.asyncio
+    async def test_load_system_with_system_class(self, tmp_path) -> None:
+        workspace = anyio.Path(tmp_path)
+        systems_dir = workspace / "systems"
+        await systems_dir.mkdir()
+
+        system_file = systems_dir / "system.py"
+        await system_file.write_text(
+            "class System:\n"
+            "    def __init__(self, workspace):\n"
+            "        self.workspace = workspace\n"
+            "    async def build_system_prompt(self):\n"
+            '        return "system prompt"\n'
+            "    async def compact_history(self, history, complete_fn):\n"
+            "        return history\n"
+        )
+
+        result = await _load_system(workspace)
+        assert result is not None
+        assert hasattr(result, "build_system_prompt")
+        assert hasattr(result, "compact_history")
+        prompt = await result.build_system_prompt()
+        assert prompt == "system prompt"
+
+    @pytest.mark.asyncio
+    async def test_load_system_without_system_class(self, tmp_path) -> None:
+        workspace = anyio.Path(tmp_path)
+        systems_dir = workspace / "systems"
+        await systems_dir.mkdir()
+
+        system_file = systems_dir / "system.py"
+        await system_file.write_text("x = 42\n")
+
+        result = await _load_system(workspace)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_load_system_no_file(self, tmp_path) -> None:
+        workspace = anyio.Path(tmp_path)
+        result = await _load_system(workspace)
+        assert result is None
+
+
+class TestHandleWorkspaceChangesScheduleBranches:
+    """Tests for _handle_workspace_changes schedule branches."""
+
+    @pytest.mark.asyncio
+    async def test_schedules_added_triggers_add_schedule(self) -> None:
+        runner = SessionRunner.__new__(SessionRunner)
+        runner.config = MagicMock()
+        runner.registry = MagicMock()
+        runner._system = None
+        runner._system_prompt_cache = None
+        runner._schedule_executor = MagicMock()
+        runner._schedule_executor.add_schedule = AsyncMock()
+        runner._schedule_executor.update_schedule = AsyncMock()
+        runner._schedule_executor.remove_schedule = AsyncMock()
+
+        changes = ChangeSummary(
+            tools_added=[],
+            tools_modified=[],
+            tools_removed=[],
+            skills_added=[],
+            skills_modified=[],
+            skills_removed=[],
+            schedules_added=["daily_summary"],
+            schedules_modified=[],
+            schedules_removed=[],
+        )
+
+        mock_schedule = MagicMock()
+        with (
+            patch("psi_agent.session.runner.load_schedule", return_value=mock_schedule),
+            patch("psi_agent.session.runner.detect_and_update_tools", new_callable=AsyncMock),
+        ):
+            await runner._handle_workspace_changes(changes)
+
+        runner._schedule_executor.add_schedule.assert_called_once_with(mock_schedule)
+
+    @pytest.mark.asyncio
+    async def test_schedules_modified_triggers_update_schedule(self) -> None:
+        runner = SessionRunner.__new__(SessionRunner)
+        runner.config = MagicMock()
+        runner.registry = MagicMock()
+        runner._system = None
+        runner._system_prompt_cache = None
+        runner._schedule_executor = MagicMock()
+        runner._schedule_executor.add_schedule = AsyncMock()
+        runner._schedule_executor.update_schedule = AsyncMock()
+        runner._schedule_executor.remove_schedule = AsyncMock()
+
+        changes = ChangeSummary(
+            tools_added=[],
+            tools_modified=[],
+            tools_removed=[],
+            skills_added=[],
+            skills_modified=[],
+            skills_removed=[],
+            schedules_added=[],
+            schedules_modified=["weekly_report"],
+            schedules_removed=[],
+        )
+
+        mock_schedule = MagicMock()
+        with (
+            patch("psi_agent.session.runner.load_schedule", return_value=mock_schedule),
+            patch("psi_agent.session.runner.detect_and_update_tools", new_callable=AsyncMock),
+        ):
+            await runner._handle_workspace_changes(changes)
+
+        runner._schedule_executor.update_schedule.assert_called_once_with(mock_schedule)
+
+    @pytest.mark.asyncio
+    async def test_schedules_removed_triggers_remove_schedule(self) -> None:
+        runner = SessionRunner.__new__(SessionRunner)
+        runner.config = MagicMock()
+        runner.registry = MagicMock()
+        runner._system = None
+        runner._system_prompt_cache = None
+        runner._schedule_executor = MagicMock()
+        runner._schedule_executor.add_schedule = AsyncMock()
+        runner._schedule_executor.update_schedule = AsyncMock()
+        runner._schedule_executor.remove_schedule = AsyncMock()
+
+        changes = ChangeSummary(
+            tools_added=[],
+            tools_modified=[],
+            tools_removed=[],
+            skills_added=[],
+            skills_modified=[],
+            skills_removed=[],
+            schedules_added=[],
+            schedules_modified=[],
+            schedules_removed=["old_task"],
+        )
+
+        with patch("psi_agent.session.runner.detect_and_update_tools", new_callable=AsyncMock):
+            await runner._handle_workspace_changes(changes)
+
+        runner._schedule_executor.remove_schedule.assert_called_once_with("old_task")
+
+
+class TestBuildMessagesWithSystem:
+    """Tests for _build_messages with System instance."""
+
+    @pytest.mark.asyncio
+    async def test_compact_history_called_when_system_available(self) -> None:
+        from psi_agent.session.types import History
+
+        runner = SessionRunner.__new__(SessionRunner)
+        runner._system = MagicMock()
+        runner._system.compact_history = AsyncMock(
+            return_value=[{"role": "user", "content": "compacted"}]
+        )
+        runner.history = History(
+            messages=[
+                {"role": "user", "content": "old msg 1"},
+                {"role": "user", "content": "old msg 2"},
+            ]
+        )
+        runner._system_prompt_cache = "system prompt"
+        runner._complete_fn = MagicMock()
+
+        result = await runner._build_messages()
+
+        runner._system.compact_history.assert_called_once()
+        assert result[0] == {"role": "system", "content": "system prompt"}
+        assert result[1] == {"role": "user", "content": "compacted"}
+
+    @pytest.mark.asyncio
+    async def test_compact_history_not_called_without_system(self) -> None:
+        from psi_agent.session.types import History
+
+        runner = SessionRunner.__new__(SessionRunner)
+        runner._system = None
+        runner.history = History(messages=[{"role": "user", "content": "hello"}])
+        runner._system_prompt_cache = "system prompt"
+
+        result = await runner._build_messages()
+
+        assert result[0] == {"role": "system", "content": "system prompt"}
+        assert result[1] == {"role": "user", "content": "hello"}
+
+
+class TestReconstructToolCallsBoundary:
+    """Boundary tests for _reconstruct_tool_calls."""
+
+    def test_empty_list(self, config) -> None:
+        runner = SessionRunner(config)
+        result = runner._reconstruct_tool_calls([])
+        assert result == []
+
+    def test_non_contiguous_indices(self, config) -> None:
+        chunks = [
+            {"index": 0, "id": "call_1", "function": {"name": "read", "arguments": ""}},
+            {"index": 3, "id": "call_2", "function": {"name": "write", "arguments": ""}},
+        ]
+        runner = SessionRunner(config)
+        result = runner._reconstruct_tool_calls(chunks)
+        assert len(result) == 2
+        assert result[0]["function"]["name"] == "read"
+        assert result[1]["function"]["name"] == "write"
+
+    def test_function_name_as_none(self, config) -> None:
+        chunks = [
+            {"index": 0, "id": "call_1", "function": {"name": None, "arguments": ""}},
+        ]
+        runner = SessionRunner(config)
+        result = runner._reconstruct_tool_calls(chunks)
+        assert len(result) == 1
+        assert result[0]["function"]["name"] == ""
+
+    def test_multiple_tool_calls_interleaved(self, config) -> None:
+        chunks = [
+            {"index": 0, "id": "call_1", "function": {"name": "read", "arguments": ""}},
+            {"index": 1, "id": "call_2", "function": {"name": "write", "arguments": ""}},
+            {"index": 0, "function": {"arguments": "arg1"}},
+            {"index": 1, "function": {"arguments": "arg2"}},
+        ]
+        runner = SessionRunner(config)
+        result = runner._reconstruct_tool_calls(chunks)
+        assert len(result) == 2
+        assert result[0]["function"]["arguments"] == "arg1"
+        assert result[1]["function"]["arguments"] == "arg2"
+
+
+class TestFormatFunctionsEdgeCases:
+    """Edge case tests for format functions."""
+
+    def test_format_thinking_block_empty_string(self) -> None:
+        result = format_thinking_block("")
+        assert "<thinking>" in result
+        assert "</thinking>" in result
+
+    def test_format_tool_call_thinking_empty_result(self) -> None:
+        result = format_tool_call_thinking(tool_name="test", arguments="{}", result="")
+        assert isinstance(result, str)
+        assert "<thinking>" in result
+        assert isinstance(result, str)
+
+    def test_format_thinking_block_with_xml_tags(self) -> None:
+        content = "<tag>value</tag>"
+        result = format_thinking_block(content)
+        assert content in result
 
 
 class TestRunnerScheduleExecutor:
