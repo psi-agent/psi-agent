@@ -6,7 +6,13 @@ from collections.abc import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from anthropic import APIConnectionError, AuthenticationError, RateLimitError
+from anthropic import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    AuthenticationError,
+    RateLimitError,
+)
 
 from psi_agent.ai.anthropic_messages.client import AnthropicMessagesClient
 from psi_agent.ai.anthropic_messages.config import AnthropicMessagesConfig
@@ -531,3 +537,199 @@ class TestAnthropicMessagesClient:
                 for chunk in chunks:
                     if chunk.startswith("event:"):
                         assert "event: unknown_event_type" not in chunk
+
+
+class TestClientNotInitialized:
+    """Tests for calling client without initialization."""
+
+    @pytest.fixture
+    def client(self) -> AnthropicMessagesClient:
+        """Create test client without entering context manager."""
+        config = AnthropicMessagesConfig(
+            session_socket="/tmp/test.sock",
+            model="claude-sonnet-4-20250514",
+            api_key="test-key",
+        )
+        return AnthropicMessagesClient(config)
+
+    @pytest.mark.asyncio
+    async def test_messages_raises_when_not_initialized(
+        self, client: AnthropicMessagesClient
+    ) -> None:
+        """Test messages raises RuntimeError when client not initialized."""
+        with pytest.raises(RuntimeError, match="Client not initialized"):
+            await client.messages(
+                {"messages": [{"role": "user", "content": "Hello"}]},
+                stream=False,
+            )
+
+    @pytest.mark.asyncio
+    async def test_messages_streaming_raises_when_not_initialized(
+        self, client: AnthropicMessagesClient
+    ) -> None:
+        """Test streaming messages raises RuntimeError when client not initialized."""
+        with pytest.raises(RuntimeError, match="Client not initialized"):
+            await client.messages(
+                {"messages": [{"role": "user", "content": "Hello"}]},
+                stream=True,
+            )
+
+
+class TestHandleError:
+    """Tests for _handle_error method."""
+
+    @pytest.fixture
+    def client(self) -> AnthropicMessagesClient:
+        """Create test client."""
+        config = AnthropicMessagesConfig(
+            session_socket="/tmp/test.sock",
+            model="claude-sonnet-4-20250514",
+            api_key="test-key",
+        )
+        return AnthropicMessagesClient(config)
+
+    def test_api_status_error_with_status_code(self, client: AnthropicMessagesClient) -> None:
+        """Test _handle_error with APIStatusError that has status_code."""
+        error = APIStatusError(
+            message="Bad request",
+            response=MagicMock(status_code=400),
+            body={"error": {"message": "Bad request"}},
+        )
+        result = client._handle_error(error)
+        assert result["error"] == "Bad request"
+        assert result["status_code"] == 400
+
+    def test_api_status_error_with_none_status_code(self, client: AnthropicMessagesClient) -> None:
+        """Test _handle_error with APIStatusError where status_code is None."""
+        error = APIStatusError(
+            message="Unknown error",
+            response=MagicMock(status_code=None),
+            body={"error": {"message": "Unknown error"}},
+        )
+        result = client._handle_error(error)
+        assert result["error"] == "Unknown error"
+        assert result["status_code"] == 500
+
+    def test_api_timeout_error(self, client: AnthropicMessagesClient) -> None:
+        """Test _handle_error with APITimeoutError."""
+        error = APITimeoutError(request=MagicMock())
+        result = client._handle_error(error)
+        assert "error" in result
+        assert result["status_code"] == 500
+
+    def test_generic_exception(self, client: AnthropicMessagesClient) -> None:
+        """Test _handle_error with generic Exception."""
+        error = Exception("unexpected failure")
+        result = client._handle_error(error)
+        assert result["error"] == "unexpected failure"
+        assert result["status_code"] == 500
+
+
+class TestStreamingMidStreamError:
+    """Tests for streaming mid-stream error handling."""
+
+    @pytest.fixture
+    def client(self) -> AnthropicMessagesClient:
+        """Create test client."""
+        config = AnthropicMessagesConfig(
+            session_socket="/tmp/test.sock",
+            model="claude-sonnet-4-20250514",
+            api_key="test-key",
+        )
+        return AnthropicMessagesClient(config)
+
+    @pytest.mark.asyncio
+    async def test_streaming_api_timeout_error(self, client: AnthropicMessagesClient) -> None:
+        """Test streaming with APITimeoutError during stream."""
+        mock_stream = AsyncMock()
+        mock_stream.__aenter__ = AsyncMock(side_effect=APITimeoutError(request=MagicMock()))
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("psi_agent.ai.anthropic_messages.client.AsyncAnthropic") as mock_anthropic:
+            mock_instance = AsyncMock()
+            mock_instance.messages.stream = MagicMock(return_value=mock_stream)
+            mock_instance.close = AsyncMock()
+            mock_anthropic.return_value = mock_instance
+
+            async with client:
+                result = await client.messages(
+                    {"messages": [{"role": "user", "content": "Hello"}]},
+                    stream=True,
+                )
+
+                chunks = []
+                async for chunk in result:
+                    chunks.append(chunk)
+
+                assert len(chunks) == 1
+                import json
+
+                error_data = json.loads(chunks[0].replace("data: ", "").strip())
+                assert "error" in error_data
+                assert error_data["status_code"] == 500
+
+    @pytest.mark.asyncio
+    async def test_streaming_api_status_error(self, client: AnthropicMessagesClient) -> None:
+        """Test streaming with APIStatusError during stream."""
+        mock_stream = AsyncMock()
+        mock_stream.__aenter__ = AsyncMock(
+            side_effect=APIStatusError(
+                message="Server error",
+                response=MagicMock(status_code=500),
+                body={"error": {"message": "Server error"}},
+            )
+        )
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("psi_agent.ai.anthropic_messages.client.AsyncAnthropic") as mock_anthropic:
+            mock_instance = AsyncMock()
+            mock_instance.messages.stream = MagicMock(return_value=mock_stream)
+            mock_instance.close = AsyncMock()
+            mock_anthropic.return_value = mock_instance
+
+            async with client:
+                result = await client.messages(
+                    {"messages": [{"role": "user", "content": "Hello"}]},
+                    stream=True,
+                )
+
+                chunks = []
+                async for chunk in result:
+                    chunks.append(chunk)
+
+                assert len(chunks) == 1
+                import json
+
+                error_data = json.loads(chunks[0].replace("data: ", "").strip())
+                assert "error" in error_data
+                assert error_data["status_code"] == 500
+
+    @pytest.mark.asyncio
+    async def test_streaming_generic_exception(self, client: AnthropicMessagesClient) -> None:
+        """Test streaming with generic Exception during stream."""
+        mock_stream = AsyncMock()
+        mock_stream.__aenter__ = AsyncMock(side_effect=Exception("unexpected"))
+        mock_stream.__aexit__ = AsyncMock(return_value=None)
+
+        with patch("psi_agent.ai.anthropic_messages.client.AsyncAnthropic") as mock_anthropic:
+            mock_instance = AsyncMock()
+            mock_instance.messages.stream = MagicMock(return_value=mock_stream)
+            mock_instance.close = AsyncMock()
+            mock_anthropic.return_value = mock_instance
+
+            async with client:
+                result = await client.messages(
+                    {"messages": [{"role": "user", "content": "Hello"}]},
+                    stream=True,
+                )
+
+                chunks = []
+                async for chunk in result:
+                    chunks.append(chunk)
+
+                assert len(chunks) == 1
+                import json
+
+                error_data = json.loads(chunks[0].replace("data: ", "").strip())
+                assert "error" in error_data
+                assert error_data["status_code"] == 500

@@ -436,3 +436,29 @@ class TestModelInjection:
         # Verify user-specified model was preserved
         call_args = mock_client.chat_completions.call_args[0][0]
         assert call_args["model"] == "gpt-4o"
+
+
+class TestServerLifecycle:
+    """Tests for server start/stop lifecycle."""
+
+    @pytest.mark.asyncio
+    async def test_stop_with_none_client(self, config: OpenAICompletionsConfig) -> None:
+        """Test stop when client is None."""
+        server = OpenAICompletionsServer(config)
+        server.client = None
+        server._runner = None
+
+        # Should not raise
+        await server.stop()
+
+    @pytest.mark.asyncio
+    async def test_stop_with_none_runner(self, config: OpenAICompletionsConfig) -> None:
+        """Test stop when runner is None."""
+        server = OpenAICompletionsServer(config)
+        mock_client = AsyncMock()
+        mock_client.__aexit__ = AsyncMock()
+        server.client = mock_client
+        server._runner = None
+
+        await server.stop()
+        mock_client.__aexit__.assert_called_once()

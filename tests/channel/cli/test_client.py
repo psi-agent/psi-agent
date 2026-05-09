@@ -397,3 +397,192 @@ class TestCliClientSendMessageDispatch:
         call_kwargs = mock.call_args
         assert call_kwargs[1].get("on_chunk") is _my_callback or call_kwargs[0][3] is _my_callback
         assert result == "ok"
+
+
+class TestCliClientNullEmptyContent:
+    """Tests for CliClient handling null/empty content in responses."""
+
+    @pytest.mark.asyncio
+    async def test_streaming_null_content_in_delta_skipped(self) -> None:
+        """Null content in streaming delta is skipped (not appended)."""
+        client = CliClient(_make_config(stream=True))
+        client._session = MagicMock()
+
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"content":null}}]}\n',
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def _aiter_lines():
+            for line in sse_lines:
+                yield line
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.content = _aiter_lines()
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=False)
+
+        client._session.post = MagicMock(return_value=mock_response)
+
+        result = await client._send_streaming(
+            "http://localhost/v1/chat/completions",
+            {"Content-Type": "application/json"},
+            "Hi",
+        )
+
+        assert result == "Hello"
+
+    @pytest.mark.asyncio
+    async def test_streaming_empty_string_content_in_delta_handled(self) -> None:
+        """Empty string content in streaming delta is handled."""
+        client = CliClient(_make_config(stream=True))
+        client._session = MagicMock()
+
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"content":""}}]}\n',
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def _aiter_lines():
+            for line in sse_lines:
+                yield line
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.content = _aiter_lines()
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=False)
+
+        client._session.post = MagicMock(return_value=mock_response)
+
+        result = await client._send_streaming(
+            "http://localhost/v1/chat/completions",
+            {"Content-Type": "application/json"},
+            "Hi",
+        )
+
+        assert result == "Hello"
+
+    @pytest.mark.asyncio
+    async def test_non_streaming_null_content_returns_empty_string(self) -> None:
+        """Null content in non-streaming response returns empty string."""
+        client = CliClient(_make_config(stream=False))
+        client._session = MagicMock()
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.json = AsyncMock(return_value={"choices": [{"message": {"content": None}}]})
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=False)
+
+        client._session.post = MagicMock(return_value=mock_response)
+
+        result = await client._send_non_streaming(
+            "http://localhost/v1/chat/completions",
+            {"Content-Type": "application/json"},
+            "Hi",
+        )
+
+        assert result == ""
+
+
+class TestCliClientReasoningAndMissingFields:
+    """Tests for CliClient handling reasoning field and missing fields."""
+
+    @pytest.mark.asyncio
+    async def test_streaming_reasoning_field_handled(self) -> None:
+        """Reasoning field in streaming delta is handled without crash."""
+        client = CliClient(_make_config(stream=True))
+        client._session = MagicMock()
+
+        sse_lines = [
+            b'data: {"choices":[{"delta":{"reasoning":"thinking...","content":"Hello"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def _aiter_lines():
+            for line in sse_lines:
+                yield line
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.content = _aiter_lines()
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=False)
+
+        client._session.post = MagicMock(return_value=mock_response)
+
+        result = await client._send_streaming(
+            "http://localhost/v1/chat/completions",
+            {"Content-Type": "application/json"},
+            "Hi",
+        )
+
+        assert result == "Hello"
+
+    @pytest.mark.asyncio
+    async def test_streaming_empty_choices_list_skipped(self) -> None:
+        """Empty choices list in streaming chunk is skipped."""
+        client = CliClient(_make_config(stream=True))
+        client._session = MagicMock()
+
+        sse_lines = [
+            b'data: {"choices":[]}\n',
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def _aiter_lines():
+            for line in sse_lines:
+                yield line
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.content = _aiter_lines()
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=False)
+
+        client._session.post = MagicMock(return_value=mock_response)
+
+        result = await client._send_streaming(
+            "http://localhost/v1/chat/completions",
+            {"Content-Type": "application/json"},
+            "Hi",
+        )
+
+        assert result == "Hello"
+
+    @pytest.mark.asyncio
+    async def test_streaming_missing_delta_key_no_crash(self) -> None:
+        """Missing delta key in streaming chunk does not crash."""
+        client = CliClient(_make_config(stream=True))
+        client._session = MagicMock()
+
+        sse_lines = [
+            b'data: {"choices":[{}]}\n',
+            b'data: {"choices":[{"delta":{"content":"Hello"}}]}\n',
+            b"data: [DONE]\n",
+        ]
+
+        async def _aiter_lines():
+            for line in sse_lines:
+                yield line
+
+        mock_response = AsyncMock()
+        mock_response.status = 200
+        mock_response.content = _aiter_lines()
+        mock_response.__aenter__ = AsyncMock(return_value=mock_response)
+        mock_response.__aexit__ = AsyncMock(return_value=False)
+
+        client._session.post = MagicMock(return_value=mock_response)
+
+        result = await client._send_streaming(
+            "http://localhost/v1/chat/completions",
+            {"Content-Type": "application/json"},
+            "Hi",
+        )
+
+        assert result == "Hello"

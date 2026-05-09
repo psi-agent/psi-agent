@@ -427,3 +427,151 @@ class TestSessionServerStartStop:
                 # But we can verify the code path by checking the log
 
                 await server.stop()
+
+
+class TestServerNullContentAndMissingFields:
+    """Tests for null content and missing fields handling (T14)."""
+
+    @pytest.mark.asyncio
+    async def test_handle_chat_completions_none_content(self, config):
+        """Test _handle_chat_completions with user_message content None.
+
+        The server code handles None content gracefully at line 80:
+        content_preview = content[:100] if content else ""
+        When content is None, the preview becomes "".
+        The request is then passed to process_request which receives
+        the user_message with content=None.
+        """
+        server = SessionServer(config)
+
+        runner = SessionRunner(config)
+        server.runner = runner
+
+        mock_process_request = AsyncMock(
+            return_value={
+                "choices": [{"message": {"role": "assistant", "content": "Handled None"}}],
+                "model": "session",
+            }
+        )
+
+        mock_request = MagicMock()
+        mock_request.json = AsyncMock(
+            return_value={"messages": [{"role": "user", "content": None}]}
+        )
+
+        with patch.object(runner, "process_request", mock_process_request):
+            response = await server._handle_chat_completions(mock_request)
+            # Server should handle None content without crashing
+            assert response.status == 200
+            # Verify process_request was called with the None content message
+            mock_process_request.assert_called_once_with({"role": "user", "content": None})
+
+    @pytest.mark.asyncio
+    async def test_handle_chat_completions_empty_string_content(self, config):
+        """Test _handle_chat_completions with user_message content empty string."""
+        server = SessionServer(config)
+
+        runner = SessionRunner(config)
+        server.runner = runner
+
+        mock_process_request = AsyncMock(
+            return_value={
+                "choices": [{"message": {"role": "assistant", "content": "Got empty input"}}],
+                "model": "session",
+            }
+        )
+
+        mock_request = MagicMock()
+        mock_request.json = AsyncMock(return_value={"messages": [{"role": "user", "content": ""}]})
+
+        with patch.object(runner, "process_request", mock_process_request):
+            response = await server._handle_chat_completions(mock_request)
+            assert response.status == 200
+
+    def test_filter_for_channel_no_choices_key(self, config):
+        """Test _filter_for_channel with no choices key in response."""
+        server = SessionServer(config)
+        response = {"id": "chatcmpl-1", "model": "test"}
+        result = server._filter_for_channel(response)
+        # No choices key means empty choices list is used
+        assert result == {"choices": [], "model": "test"}
+
+    def test_filter_for_channel_empty_choices(self, config):
+        """Test _filter_for_channel with empty choices list."""
+        server = SessionServer(config)
+        response = {"id": "chatcmpl-1", "choices": []}
+        result = server._filter_for_channel(response)
+        assert result == {"choices": [], "model": "session"}
+
+    def test_filter_for_channel_missing_message(self, config):
+        """Test _filter_for_channel with missing message in choice."""
+        server = SessionServer(config)
+        response = {"choices": [{"finish_reason": "stop"}]}
+        result = server._filter_for_channel(response)
+        # Should handle missing message gracefully by using defaults
+        assert "choices" in result
+        assert len(result["choices"]) == 1
+        assert result["choices"][0]["message"]["role"] == "assistant"
+        assert result["choices"][0]["message"]["content"] == ""
+
+    def test_filter_for_channel_none_content(self, config):
+        """Test _filter_for_channel with None content in message."""
+        server = SessionServer(config)
+        response = {"choices": [{"message": {"role": "assistant", "content": None}}]}
+        result = server._filter_for_channel(response)
+        assert "choices" in result
+        # Content should be None (not crash) - .get("content", "") returns None
+        # when key exists with None value
+        assert result["choices"][0]["message"]["content"] is None
+
+
+class TestServerStartStopExceptions:
+    """Tests for server start/stop exception handling (T15)."""
+
+    @pytest.mark.asyncio
+    async def test_double_stop_no_exception(self, config: SessionConfig) -> None:
+        """Test double stop does not raise exception."""
+        server = SessionServer(config)
+
+        with (
+            patch("psi_agent.session.server.web.UnixSite") as mock_site,
+            patch("psi_agent.session.server.load_schedules") as mock_load_schedules,
+        ):
+            mock_site_instance = AsyncMock()
+            mock_site.return_value = mock_site_instance
+            mock_load_schedules.return_value = []
+
+            await server.start()
+            await server.stop()
+            # Second stop should not raise
+            await server.stop()
+
+    @pytest.mark.asyncio
+    async def test_runner_aenter_raises_exception_propagates(self, config: SessionConfig) -> None:
+        """Test runner __aenter__ raises exception which propagates."""
+        with patch(
+            "psi_agent.session.runner.SessionRunner.__aenter__",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("Init failed"),
+        ):
+            runner = SessionRunner(config)
+            with pytest.raises(RuntimeError, match="Init failed"):
+                await runner.__aenter__()
+
+    @pytest.mark.asyncio
+    async def test_runner_aexit_exception_propagates(self, config: SessionConfig) -> None:
+        """Test runner __aexit__ with client that raises during close.
+
+        The __aexit__ method does not catch exceptions from client.close(),
+        so the exception propagates to the caller.
+        """
+        runner = SessionRunner(config)
+        await runner.__aenter__()
+        assert runner.client is not None
+
+        # Mock client.close to raise an exception
+        runner.client.close = AsyncMock(side_effect=RuntimeError("Close failed"))
+
+        # __aexit__ does not catch exceptions from client.close
+        with pytest.raises(RuntimeError, match="Close failed"):
+            await runner.__aexit__(None, None, None)
