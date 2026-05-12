@@ -127,11 +127,13 @@ class TestScheduleExecutorExceptionAndRetry:
             executor._running = False
             return 0.0
 
-        with patch.object(
-            schedule, "get_seconds_until_next_run", side_effect=get_seconds_side_effect
-        ), patch.object(schedule, "get_next_run", return_value=datetime.now()), patch(
-            "psi_agent.session.schedule.asyncio.sleep", new_callable=AsyncMock
-        ) as mock_sleep:
+        with (
+            patch.object(
+                schedule, "get_seconds_until_next_run", side_effect=get_seconds_side_effect
+            ),
+            patch.object(schedule, "get_next_run", return_value=datetime.now()),
+            patch("psi_agent.session.schedule.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        ):
             await executor._schedule_loop(schedule)
 
         # First call raised exception, second call succeeded
@@ -196,9 +198,7 @@ class TestScheduleExecutorExceptionAndRetry:
         with (
             patch.object(schedule, "get_seconds_until_next_run", return_value=0.0),
             patch.object(schedule, "get_next_run", return_value=datetime.now()),
-            patch(
-                "psi_agent.session.schedule.asyncio.sleep", new_callable=AsyncMock
-            ) as mock_sleep,
+            patch("psi_agent.session.schedule.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
         ):
             await executor._schedule_loop(schedule)
 
