@@ -570,8 +570,10 @@ class TestServerStartStopExceptions:
         assert runner.client is not None
 
         # Mock client.close to raise an exception
-        runner.client.close = AsyncMock(side_effect=RuntimeError("Close failed"))
-
-        # __aexit__ does not catch exceptions from client.close
-        with pytest.raises(RuntimeError, match="Close failed"):
+        with (
+            patch.object(
+                runner.client, "close", AsyncMock(side_effect=RuntimeError("Close failed"))
+            ),
+            pytest.raises(RuntimeError, match="Close failed"),
+        ):
             await runner.__aexit__(None, None, None)

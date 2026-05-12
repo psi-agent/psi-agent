@@ -473,6 +473,7 @@ class TestStreamingErrorPaths:
                     stream=True,
                 )
 
+                assert not isinstance(result, dict)
                 chunks = []
                 async for chunk in result:
                     chunks.append(chunk)
@@ -505,6 +506,7 @@ class TestStreamingErrorPaths:
                     stream=True,
                 )
 
+                assert not isinstance(result, dict)
                 chunks = []
                 async for chunk in result:
                     chunks.append(chunk)
@@ -533,6 +535,7 @@ class TestStreamingErrorPaths:
                     stream=True,
                 )
 
+                assert not isinstance(result, dict)
                 chunks = []
                 async for chunk in result:
                     chunks.append(chunk)
@@ -561,6 +564,7 @@ class TestStreamingErrorPaths:
                     stream=True,
                 )
 
+                assert not isinstance(result, dict)
                 chunks = []
                 async for chunk in result:
                     chunks.append(chunk)

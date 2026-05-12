@@ -449,7 +449,7 @@ class TestSnapshotDifferentOutputFile:
             mock_create.return_value = None
             mock_move.return_value = None
 
-            await snapshot(input_file, mount_point, output_file=output_file, tag="v1.1")
+            await snapshot(input_file, mount_point, output_file=str(output_file), tag="v1.1")
 
             mock_read.assert_called_once()
             mock_extract.assert_called_once()
@@ -507,7 +507,7 @@ class TestSnapshotOutputFileExists:
             mock_create.return_value = None
             mock_move.return_value = None
 
-            await snapshot(input_file, mount_point, output_file=output_file, tag="v1.1")
+            await snapshot(input_file, mount_point, output_file=str(output_file), tag="v1.1")
 
             mock_read.assert_called_once()
             mock_extract.assert_called_once()
