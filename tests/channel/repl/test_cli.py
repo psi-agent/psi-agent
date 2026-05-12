@@ -107,9 +107,6 @@ class TestReplMain:
         """Test main function exists."""
         assert callable(main)
 
-    @pytest.mark.filterwarnings(
-        "ignore:coroutine 'AsyncMockMixin._execute_mock_call' was never awaited:RuntimeWarning"
-    )
     @patch("psi_agent.channel.repl.cli.tyro.cli")
     def test_main_calls_tyro(self, mock_cli: MagicMock) -> None:
         """Test main calls tyro.cli."""

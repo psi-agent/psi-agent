@@ -6,6 +6,8 @@ import sys
 from io import StringIO
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from psi_agent.channel.cli.cli import Cli
 from psi_agent.channel.cli.client import CliClient
 from psi_agent.channel.cli.config import CliConfig

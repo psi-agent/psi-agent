@@ -8,8 +8,8 @@ import anyio
 import pytest
 from prompt_toolkit.history import FileHistory
 
-from psi_agent.channel.repl.config import ReplConfig
 from psi_agent.channel.repl.client import ReplClient
+from psi_agent.channel.repl.config import ReplConfig
 from psi_agent.channel.repl.repl import Repl, _ensure_history_dir
 
 
