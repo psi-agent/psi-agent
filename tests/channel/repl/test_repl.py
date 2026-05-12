@@ -9,6 +9,7 @@ import pytest
 from prompt_toolkit.history import FileHistory
 
 from psi_agent.channel.repl.config import ReplConfig
+from psi_agent.channel.repl.client import ReplClient
 from psi_agent.channel.repl.repl import Repl, _ensure_history_dir
 
 
@@ -72,7 +73,12 @@ class TestRepl:
         async def mock_read() -> str | None:
             return next(input_iter, None)
 
-        with patch.object(repl, "_read_input", mock_read), patch("builtins.print") as mock_print:
+        with (
+            patch.object(ReplClient, "__aenter__", AsyncMock(return_value=MagicMock())),
+            patch.object(ReplClient, "__aexit__", AsyncMock()),
+            patch.object(repl, "_read_input", mock_read),
+            patch("builtins.print") as mock_print,
+        ):
             await repl.run()
 
             # Check goodbye message was printed

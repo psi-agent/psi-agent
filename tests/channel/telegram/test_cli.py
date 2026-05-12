@@ -7,6 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from psi_agent.channel.telegram.cli import Telegram, main
 
 
+def _run_coroutine_silently(coro):
+    """Side effect for mocked asyncio.run that closes the coroutine to prevent warnings."""
+    coro.close()
+    return None
+
+
 def test_telegram_cli_without_proxy():
     """Test Telegram CLI without proxy argument."""
     cli = Telegram(token="test-token", session_socket="/tmp/test.sock")
@@ -110,6 +116,7 @@ class TestTelegramCliCall:
         mock_bot = MagicMock()
         mock_bot.start = AsyncMock()
         mock_bot_cls.return_value = mock_bot
+        mock_run.side_effect = _run_coroutine_silently
 
         cli = Telegram(
             token="test-token",
@@ -143,6 +150,7 @@ class TestTelegramCliCall:
         mock_bot = MagicMock()
         mock_bot.start = AsyncMock()
         mock_bot_cls.return_value = mock_bot
+        mock_run.side_effect = _run_coroutine_silently
 
         cli = Telegram(token="test-token", session_socket="/tmp/test.sock")
         cli()
@@ -164,6 +172,7 @@ class TestTelegramCliCall:
         mock_bot = MagicMock()
         mock_bot.start = AsyncMock()
         mock_bot_cls.return_value = mock_bot
+        mock_run.side_effect = _run_coroutine_silently
 
         cli = Telegram(token="test-token", session_socket="/tmp/test.sock")
         cli()
@@ -177,5 +186,7 @@ class TestTelegramMain:
     @patch("psi_agent.channel.telegram.cli.tyro.cli")
     def test_main_calls_tyro(self, mock_cli: MagicMock) -> None:
         """Test main calls tyro.cli."""
+        # Make tyro.cli return a callable that returns None (not a coroutine)
+        mock_cli.return_value = MagicMock(return_value=None)
         main()
         mock_cli.assert_called_once_with(Telegram)

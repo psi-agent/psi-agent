@@ -6,11 +6,15 @@ import sys
 from io import StringIO
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from psi_agent.channel.cli.cli import Cli
 from psi_agent.channel.cli.client import CliClient
 from psi_agent.channel.cli.config import CliConfig
+
+
+def _run_coroutine_silently(coro):
+    """Side effect for mocked asyncio.run that closes the coroutine to prevent warnings."""
+    coro.close()
+    return None
 
 
 class TestCliCall:
@@ -25,6 +29,7 @@ class TestCliCall:
         """Test __call__ creates config and client."""
         mock_config.return_value = MagicMock()
         mock_client.return_value = MagicMock()
+        mock_run.side_effect = _run_coroutine_silently
 
         cli = Cli(session_socket="/tmp/test.sock", message="Hello")
         cli()
@@ -42,6 +47,7 @@ class TestCliCall:
         """Test __call__ with stream=False."""
         mock_config.return_value = MagicMock()
         mock_client.return_value = MagicMock()
+        mock_run.side_effect = _run_coroutine_silently
 
         cli = Cli(session_socket="/tmp/test.sock", message="Hello", stream=False)
         cli()

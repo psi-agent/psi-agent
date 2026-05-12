@@ -7,6 +7,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from psi_agent.channel.repl.cli import Repl, main
 
 
+def _run_coroutine_silently(coro):
+    """Side effect for mocked asyncio.run that closes the coroutine to prevent warnings."""
+    coro.close()
+    return None
+
+
 class TestReplCli:
     """Tests for REPL CLI flag handling."""
 
@@ -48,6 +54,7 @@ class TestReplCli:
         mock_repl = MagicMock()
         mock_repl.run = AsyncMock()
         mock_repl_cls.return_value = mock_repl
+        mock_run.side_effect = _run_coroutine_silently
 
         cli = Repl(session_socket="/tmp/test.sock", stream=False)
         cli()
@@ -66,6 +73,7 @@ class TestReplCli:
         mock_repl = MagicMock()
         mock_repl.run = AsyncMock()
         mock_repl_cls.return_value = mock_repl
+        mock_run.side_effect = _run_coroutine_silently
 
         cli = Repl(session_socket="/tmp/test.sock")
         cli()
@@ -84,6 +92,7 @@ class TestReplCli:
         mock_repl = MagicMock()
         mock_repl.run = AsyncMock()
         mock_repl_cls.return_value = mock_repl
+        mock_run.side_effect = _run_coroutine_silently
 
         cli = Repl(session_socket="/tmp/test.sock")
         cli()
@@ -98,8 +107,12 @@ class TestReplMain:
         """Test main function exists."""
         assert callable(main)
 
+    @pytest.mark.filterwarnings(
+        "ignore:coroutine 'AsyncMockMixin._execute_mock_call' was never awaited:RuntimeWarning"
+    )
     @patch("psi_agent.channel.repl.cli.tyro.cli")
     def test_main_calls_tyro(self, mock_cli: MagicMock) -> None:
         """Test main calls tyro.cli."""
+        mock_cli.return_value = MagicMock(return_value=None)
         main()
         mock_cli.assert_called_once_with(Repl)

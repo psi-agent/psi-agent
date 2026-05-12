@@ -8,6 +8,12 @@ from psi_agent.ai.openai_completions.cli import OpenaiCompletions, main
 from psi_agent.ai.openai_completions.config import OpenAICompletionsConfig
 
 
+def _run_coroutine_silently(coro):
+    """Side effect for mocked asyncio.run that closes the coroutine to prevent warnings."""
+    coro.close()
+    return None
+
+
 class TestOpenaiCompletionsCli:
     """Tests for OpenAI completions CLI dataclass."""
 
@@ -90,6 +96,7 @@ class TestOpenaiCompletionsCliCall:
         mock_server.start = AsyncMock()
         mock_server.stop = AsyncMock()
         mock_server_cls.return_value = mock_server
+        mock_run.side_effect = _run_coroutine_silently
 
         cli = OpenaiCompletions(
             session_socket="/tmp/test.sock",
@@ -124,6 +131,7 @@ class TestOpenaiCompletionsCliCall:
         mock_server.start = AsyncMock()
         mock_server.stop = AsyncMock()
         mock_server_cls.return_value = mock_server
+        mock_run.side_effect = _run_coroutine_silently
 
         cli = OpenaiCompletions(
             session_socket="/tmp/test.sock",
@@ -141,6 +149,7 @@ class TestOpenaiCompletionsMain:
     @patch("psi_agent.ai.openai_completions.cli.tyro.cli")
     def test_main_calls_tyro(self, mock_cli: MagicMock) -> None:
         """Test main calls tyro.cli."""
+        mock_cli.return_value = MagicMock(return_value=None)
         main()
         mock_cli.assert_called_once_with(OpenaiCompletions)
 
@@ -214,6 +223,7 @@ class TestOpenaiCompletionsThinkingAndReasoning:
         mock_server.start = AsyncMock()
         mock_server.stop = AsyncMock()
         mock_server_cls.return_value = mock_server
+        mock_run.side_effect = _run_coroutine_silently
 
         cli = OpenaiCompletions(
             session_socket="/tmp/test.sock",

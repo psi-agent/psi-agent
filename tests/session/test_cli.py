@@ -8,6 +8,12 @@ from psi_agent.session.cli import Session, main
 from psi_agent.session.config import SessionConfig
 
 
+def _run_coroutine_silently(coro):
+    """Side effect for mocked asyncio.run that closes the coroutine to prevent warnings."""
+    coro.close()
+    return None
+
+
 class TestSessionCli:
     """Tests for session CLI dataclass."""
 
@@ -72,6 +78,7 @@ class TestSessionCliCall:
         mock_server.start = AsyncMock()
         mock_server.stop = AsyncMock()
         mock_server_cls.return_value = mock_server
+        mock_run.side_effect = _run_coroutine_silently
 
         session = Session(
             channel_socket="/tmp/channel.sock",
@@ -104,6 +111,7 @@ class TestSessionCliCall:
         mock_server.start = AsyncMock()
         mock_server.stop = AsyncMock()
         mock_server_cls.return_value = mock_server
+        mock_run.side_effect = _run_coroutine_silently
 
         session = Session(
             channel_socket="/tmp/channel.sock",
@@ -131,6 +139,7 @@ class TestSessionMain:
     @patch("psi_agent.session.cli.tyro.cli")
     def test_main_calls_tyro(self, mock_cli: MagicMock) -> None:
         """Test main calls tyro.cli."""
+        mock_cli.return_value = MagicMock(return_value=None)
         main()
         mock_cli.assert_called_once_with(Session)
 
